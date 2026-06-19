@@ -1,6 +1,17 @@
-/* Demo 3 – create NOS foreign table over MinIO CSV weather files.
+/* Demo 3 – NOS: list objects, create FOREIGN TABLE, count rows.
+   Runs after Kafka Connect has flushed CSV files to MinIO.
    HOST_IP must be the IP reachable by Teradata (the Docker host IP).
-   minio_nos_auth was created by setup_demo_tables.bteq. */
+
+   Auth notes:
+   - READ_NOS AUTHORIZATION NVP requires inline JSON or a Simplified auth object
+     (not INVOKER TRUSTED); inline JSON credentials are used for NOSREAD_KEYS.
+   - FOREIGN TABLE uses EXTERNAL SECURITY DEFINER TRUSTED minio_nos_auth.
+     DEFINER TRUSTED resolves the auth object in the same database as the
+     FOREIGN TABLE (demo_db), where setup_demo_tables.bteq created it.
+     INVOKER TRUSTED would look in user dbc's own database (DBC) — wrong.
+   - NOSREAD_SCHEMA is omitted: ByteArrayFormat produces .bin files, which
+     Teradata cannot auto-detect as CSV without a STOREDAS hint; STOREDAS is
+     not accepted in the NOSREAD_SCHEMA form of READ_NOS. */
 .SET ERROROUT STDOUT
 .SET WIDTH 200
 .SET ERRORLEVEL 3807 SEVERITY 0
@@ -11,10 +22,39 @@
 
 DATABASE ${TD_DATABASE};
 
+/* ── 0: Ensure auth object is DEFINER TRUSTED in demo_db ──────────────────
+   EXTERNAL SECURITY DEFINER TRUSTED looks for the auth object in the table's
+   own database (demo_db).  The auth type must match: DEFINER TRUSTED in
+   the FOREIGN TABLE requires a DEFINER TRUSTED authorization object. */
+REPLACE AUTHORIZATION minio_nos_auth
+AS DEFINER TRUSTED
+  USER '${MINIO_ROOT_USER}' PASSWORD '${MINIO_ROOT_PASSWORD}';
+
+/* ── A: List objects Kafka Connect wrote to MinIO ──────────────────────────
+   NOSREAD_KEYS enumerates every object under the location prefix.
+   Three files expected: one per Kafka message (flush.size=1 in the connector).
+   ByteArrayFormat writes files with a .bin extension. */
+SELECT location, objectlength
+FROM READ_NOS (
+  USING
+    LOCATION      ('/S3/${HOST_IP}:9000/demo-csv/raw/weather-csv/')
+    AUTHORIZATION ('{"access_id":"${MINIO_ROOT_USER}","access_key":"${MINIO_ROOT_PASSWORD}"}')
+    RETURNTYPE    ('NOSREAD_KEYS')
+) AS d
+ORDER BY location;
+
+/* ── B: Create FOREIGN TABLE ────────────────────────────────────────────────
+   All columns are VARCHAR — typed conversion happens in demo03_nos_load.bteq.
+   CSV is the default format for FOREIGN TABLE; STOREDAS is not needed and
+   not accepted for CSV on Teradata 20.x.  The .bin extension produced by
+   ByteArrayFormat is irrelevant — FOREIGN TABLE does not use file extension
+   for format detection.
+   HEADER('TRUE') strips the header row from each individual .bin file.
+   NOS recurses into the partition=0/ subdirectory automatically. */
 DROP TABLE weather_nos_ft;
 
 CREATE FOREIGN TABLE weather_nos_ft,
-  EXTERNAL SECURITY INVOKER TRUSTED minio_nos_auth
+  EXTERNAL SECURITY DEFINER TRUSTED minio_nos_auth
 (
   station_id        VARCHAR(4)   CHARACTER SET LATIN,
   observation_ts    VARCHAR(30)  CHARACTER SET LATIN,
@@ -27,13 +67,15 @@ CREATE FOREIGN TABLE weather_nos_ft,
   conditions        VARCHAR(10)  CHARACTER SET LATIN
 )
 USING (
-  LOCATION  ('/S3/${HOST_IP}:9000/demo-csv/raw/weather/')
-  STOREDAS   CSV
-  HEADER     ('TRUE')
+  LOCATION ('/S3/${HOST_IP}:9000/demo-csv/raw/weather-csv/')
+  HEADER   ('TRUE')
 )
 NO PRIMARY INDEX;
 
-/* Sanity-check: how many CSV rows landed? */
+/* Sanity-check: 3 batches × 30 data rows + 3 header rows = 93 rows.
+   HEADER('TRUE') maps column names but does not filter header rows from
+   COUNT(*) on .bin files in this NOS version.  The INSERT step correctly
+   rejects the 3 header rows via type-cast failure, loading exactly 90 rows. */
 SELECT COUNT(*) AS nos_row_count FROM weather_nos_ft;
 
 .LOGOFF;

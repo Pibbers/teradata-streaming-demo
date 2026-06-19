@@ -421,8 +421,219 @@ ORDER BY 1;
 
 ---
 
+## Demo 3: Kafka → Kafka Connect → MinIO CSV → NOS
+
+**Topic:** Streaming weather observations through a Kafka Connect S3 Sink into MinIO, then querying the CSV files in-place via Teradata Native Object Store (NOS).
+
+### What it demonstrates
+
+- The Kafka Connect S3 Sink connector (`ByteArrayFormat`, `flush.size=1`) landing one CSV file per Kafka message in MinIO — no code beyond the connector config
+- `READ_NOS` with `RETURNTYPE('NOSREAD_KEYS')` to enumerate exactly which files Kafka Connect wrote, before touching the schema
+- `READ_NOS` with `RETURNTYPE('NOSREAD_SCHEMA')` for automatic column inference from a CSV header row — useful before committing to a `CREATE FOREIGN TABLE`
+- `CREATE FOREIGN TABLE` as a thin, persistent read layer over the MinIO path; `STOREDAS CSV` with `HEADER('TRUE')` strips the header from each file
+- Typed `INSERT … SELECT` that casts the all-VARCHAR foreign table schema into the typed `weather_obs` columns
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `kafka/producers/weather_kafka.py` | Publishes full CSV batches (header + 30 rows) to the `weather-csv` Kafka topic |
+| `kafka/connect/s3-sink.json` | S3 Sink connector: ByteArrayFormat, flush.size=1, path `raw/weather-csv/` |
+| `tpt/scripts/demo03_nos_create.bteq` | NOSREAD_KEYS → NOSREAD_SCHEMA → CREATE FOREIGN TABLE + row count |
+| `tpt/scripts/demo03_nos_load.bteq` | Typed INSERT from NOS foreign table into `weather_obs` + summary |
+| `demos/03-kafka-csv-minio/run.sh` | Orchestrates all six steps end-to-end |
+
+### How to run
+
+```bash
+# From project root
+bash demos/03-kafka-csv-minio/run.sh
+```
+
+### What to expect
+
+```
+══════════════════════════════════════════════════════
+  Demo 3: Kafka → Kafka Connect → MinIO → NOS
+══════════════════════════════════════════════════════
+
+── 1/6  Preparing — clean up any previous run
+      Recreating Kafka topic: weather-csv
+      Purging MinIO prefix: demo-csv/raw/weather-csv/
+      Deleted 0 object(s) from MinIO.
+      Clearing Teradata: weather_nos_ft, weather_obs
+
+── 2/6  Registering Kafka Connect S3 Sink connector
+      Waiting for connector to start......... RUNNING
+
+── 3/6  Publishing weather batches to Kafka
+      Each batch: 5 stations × 6 hourly offsets = 30 rows + CSV header
+
+      [2026-06-19T12:00:01]  Batch 1/3: 30 rows → weather-csv
+      [2026-06-19T12:00:06]  Batch 2/3: 30 rows → weather-csv
+      [2026-06-19T12:00:11]  Batch 3/3: 30 rows → weather-csv
+      Done. 3 CSV batch(es) published to weather-csv.
+
+── 4/6  Waiting for Kafka Connect to flush files to MinIO
+      Files found in MinIO: 3 (expected: 3)
+
+── 5/6  NOS: list objects, discover schema, create FOREIGN TABLE
+      A) NOSREAD_KEYS  — list files written by Kafka Connect
+      B) NOSREAD_SCHEMA — infer column names from CSV header
+      C) CREATE FOREIGN TABLE weather_nos_ft
+      D) COUNT(*) sanity check (expect 90 rows)
+
+  -- A: files in MinIO
+  location                                                     objectlength
+  ----------------------------------------------------------   ------------
+  /S3/.../raw/weather-csv/partition=0/weather-csv+0+00000000            961
+  /S3/.../raw/weather-csv/partition=0/weather-csv+0+00000001            961
+  /S3/.../raw/weather-csv/partition=0/weather-csv+0+00000002            961
+
+  -- B: schema discovered from CSV header
+  columnid   columnname        typename
+  --------   ---------------   -------
+         1   station_id        VARCHAR
+         2   observation_ts    VARCHAR
+         3   temperature_c     VARCHAR
+         4   wind_speed_kts    VARCHAR
+         5   wind_direction    VARCHAR
+         6   visibility_m      VARCHAR
+         7   precipitation_mm  VARCHAR
+         8   pressure_hpa      VARCHAR
+         9   conditions        VARCHAR
+
+  -- D: row count
+  nos_row_count
+  -------------
+             90
+
+── 6/6  Loading weather_obs from NOS and showing summary
+
+  station_id   obs_count   avg_temp_c   max_wind_kts
+  ----------   ---------   ----------   ------------
+  EGLL                18       12.40             32
+  EHAM                18       15.10             28
+  KATL                18        9.80             35
+  KJFK                18       11.20             30
+  KLAX                18       18.60             19
+```
+
+### How it works
+
+```
+1. Producer (weather_kafka.py)
+   └─ Generates a complete CSV batch per call: header + 5 stations × 6 offsets
+   └─ Encodes as UTF-8 bytes, produces to Kafka topic weather-csv
+   └─ One Kafka message = one complete CSV file (including header row)
+
+2. Kafka Connect S3 Sink
+   └─ ByteArrayFormat: writes message bytes as-is — no schema, no transformation
+   └─ flush.size=1: a new S3 file is written after every single Kafka message
+   └─ Path: s3://demo-csv/raw/weather-csv/partition=0/weather-csv+0+NNNNNNNNNN
+   └─ No file extension (ByteArrayFormat omits it — STOREDAS overrides detection)
+
+3. NOS exploration
+   └─ NOSREAD_KEYS: enumerate files before committing to a schema
+   └─ NOSREAD_SCHEMA: infer column names from the CSV header row
+      (STOREDAS('CSV') required to override extension-based detection)
+
+4. FOREIGN TABLE
+   └─ LOCATION recurses into partition=0/ subdirectory automatically
+   └─ HEADER('TRUE') strips the header from each individual file
+   └─ All columns VARCHAR — NOS does no type conversion at the read layer
+
+5. INSERT … SELECT with explicit CASTs
+   └─ observation_ts: CAST(TRIM(…) AS TIMESTAMP(0) FORMAT 'YYYY-MM-DDBHH:MI:SS')
+   └─ Numeric fields: CAST(TRIM(…) AS DECIMAL / SMALLINT / INTEGER)
+```
+
+**Key NOS design rules:**
+
+| Rule | Detail |
+|---|---|
+| `STOREDAS` required for extensionless files | `ByteArrayFormat` produces files with no `.csv` extension; `STOREDAS ('CSV')` forces CSV parsing regardless |
+| `HEADER('TRUE')` applies per file | Each file has its own header row; NOS strips it from each file independently |
+| NOS recurses into subdirectories | `partition=0/` created by Kafka Connect's DefaultPartitioner is traversed automatically |
+| All-VARCHAR FOREIGN TABLE | NOS performs no type conversion; do all CAST operations in the consuming query |
+| Two authorization forms | `EXTERNAL SECURITY INVOKER TRUSTED minio_nos_auth` for FOREIGN TABLE; inline JSON `'{"access_id":"...","access_key":"..."}'` for READ_NOS (READ_NOS AUTHORIZATION NVP requires Simplified auth, not INVOKER TRUSTED) |
+
+### Tables
+
+```sql
+-- NOS foreign table (read-only, no physical storage in Teradata)
+CREATE FOREIGN TABLE weather_nos_ft,
+  EXTERNAL SECURITY INVOKER TRUSTED minio_nos_auth
+(
+  station_id        VARCHAR(4),
+  observation_ts    VARCHAR(30),
+  temperature_c     VARCHAR(10),
+  wind_speed_kts    VARCHAR(5),
+  wind_direction    VARCHAR(5),
+  visibility_m      VARCHAR(7),
+  precipitation_mm  VARCHAR(7),
+  pressure_hpa      VARCHAR(8),
+  conditions        VARCHAR(10)
+)
+USING (
+  LOCATION ('/S3/<host>:9000/demo-csv/raw/weather-csv/')
+  STOREDAS  CSV
+  HEADER   ('TRUE')
+)
+NO PRIMARY INDEX;
+
+-- Relational target (typed columns, loaded from NOS)
+CREATE MULTISET TABLE weather_obs (
+  station_id       CHAR(4)       NOT NULL,
+  observation_ts   TIMESTAMP(0)  NOT NULL,
+  temperature_c    DECIMAL(5,1),
+  wind_speed_kts   SMALLINT,
+  wind_direction   SMALLINT,
+  visibility_m     INTEGER,
+  precipitation_mm DECIMAL(6,2),
+  pressure_hpa     DECIMAL(7,1),
+  conditions       VARCHAR(10),
+  ingest_ts        TIMESTAMP(0)  DEFAULT CURRENT_TIMESTAMP(0)
+) PRIMARY INDEX (station_id, observation_ts);
+```
+
+### Sample queries
+
+After running the demo, connect to Teradata and try:
+
+```sql
+-- Live NOS query (reads MinIO files directly on every execution)
+SELECT station_id,
+       CAST(TRIM(observation_ts) AS TIMESTAMP(0) FORMAT 'YYYY-MM-DDBHH:MI:SS') AS obs_ts,
+       CAST(TRIM(temperature_c) AS DECIMAL(5,1))  AS temp_c,
+       CAST(TRIM(wind_speed_kts) AS SMALLINT)     AS wind_kts,
+       conditions
+FROM demo_db.weather_nos_ft
+WHERE station_id = 'EGLL'
+ORDER BY obs_ts DESC;
+
+-- Aggregate from the relational table (post-INSERT)
+SELECT station_id,
+       COUNT(*)              AS obs_count,
+       AVG(temperature_c)   AS avg_temp_c,
+       MAX(wind_speed_kts)  AS max_wind_kts,
+       MIN(pressure_hpa)    AS min_pressure
+FROM demo_db.weather_obs
+GROUP BY station_id
+ORDER BY station_id;
+
+-- IFR / LIFR conditions (low visibility) across all stations
+SELECT station_id, observation_ts, visibility_m, conditions
+FROM demo_db.weather_obs
+WHERE conditions IN ('IFR', 'LIFR')
+ORDER BY observation_ts DESC;
+```
+
+---
+
 ## Further reading
 
 - Teradata DATASET Data Type — B035-1198 (Avro Object Container File loading)
 - Teradata Parallel Transporter Reference Guide — B035-2436
 - TPT Kafka Access Module — B035-2447 (Access Module Reference)
+- Teradata Native Object Store Getting Started Guide — B035-2198

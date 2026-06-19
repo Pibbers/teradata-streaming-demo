@@ -1,9 +1,9 @@
 {
-  "name": "demo-csv-s3-sink",
+  "name": "demo-weather-s3-sink",
   "config": {
     "connector.class": "io.confluent.connect.s3.S3SinkConnector",
     "tasks.max": "1",
-    "topics": "demo-csv",
+    "topics": "weather-csv",
 
     "s3.region": "us-east-1",
     "s3.bucket.name": "demo-csv",
@@ -15,19 +15,16 @@
     "aws.secret.access.key": "minioadmin",
 
     "storage.class": "io.confluent.connect.s3.storage.S3Storage",
-    "format.class": "io.confluent.connect.s3.format.csv.CsvFormat",
+    "format.class": "io.confluent.connect.s3.format.bytearray.ByteArrayFormat",
 
-    "flush.size": "100",
+    "flush.size": "1",
     "rotate.interval.ms": "30000",
-    "rotate.schedule.interval.ms": "60000",
 
     "locale": "en_US",
     "timezone": "UTC",
-    "timestamp.extractor": "RecordField",
-    "timestamp.field": "ts",
 
     "key.converter": "org.apache.kafka.connect.storage.StringConverter",
-    "value.converter": "org.apache.kafka.connect.storage.StringConverter",
+    "value.converter": "org.apache.kafka.connect.converters.ByteArrayConverter",
 
     "s3.ssea.name": "",
     "s3.compression.type": "none",

@@ -1,0 +1,14 @@
+/* Demo 3 – pre-run cleanup: drop the NOS foreign table and clear weather_obs. */
+.SET ERROROUT STDOUT
+.SET ERRORLEVEL 3807 SEVERITY 0
+.SET ERRORLEVEL 5612 SEVERITY 0
+
+.LOGON ${TD_HOST}/${TD_USER},${TD_PASSWORD};
+
+DATABASE ${TD_DATABASE};
+
+DROP TABLE weather_nos_ft;
+DELETE FROM weather_obs ALL;
+
+.LOGOFF;
+.QUIT;

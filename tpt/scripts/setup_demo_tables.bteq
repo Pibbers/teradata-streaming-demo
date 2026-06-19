@@ -126,10 +126,11 @@ INSERT INTO aircraft_registry VALUES ('4073d6','G-TUII','B787','Boeing','TUI Air
 INSERT INTO aircraft_registry VALUES ('3f7062','EI-DYG','B737','Boeing','Ryanair','IE',2,'Turbofan');
 
 /* ── 6. Authorization objects ────────────────────────────── */
-/* NOS: MinIO access key credentials for reading S3 buckets   */
-/* (endpoint URL is given per-foreign-table in LOCATION)      */
+/* Created inside the demo database (DATABASE ${TD_DATABASE} is active).
+   FOREIGN TABLE uses EXTERNAL SECURITY DEFINER TRUSTED, which resolves
+   auth objects in the same database as the table — demo_db here.        */
 REPLACE AUTHORIZATION minio_nos_auth
-AS INVOKER TRUSTED
+AS DEFINER TRUSTED
   USER '${MINIO_ROOT_USER}' PASSWORD '${MINIO_ROOT_PASSWORD}';
 
 /* OTF: Hive Metastore catalog (unauthenticated in this demo) */
