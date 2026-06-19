@@ -79,18 +79,26 @@ def write_avro(path: Path, schema_path: Path, records: list):
     print(f"Written {len(records)} records → {path}")
 
 
+def write_index_file(index_path: Path, avro_path: Path):
+    """Write a single-line index file used by BTEQ's .IMPORT VARTEXT ... AS DEFERRED BY NAME.
+    BTEQ reads this file to find the Avro container path; it then loads the binary directly
+    into the BLOB staging column without any intermediate encoding."""
+    container_path = f"/tpt/data/sample/{avro_path.name}"
+    index_path.write_text(container_path + "\n")
+    print(f"Written index → {index_path}  (→ {container_path})")
+
+
 def main():
-    write_avro(
-        OUTPUT_DIR / "product_v1.avro",
-        SCHEMA_DIR / "product_v1.avsc",
-        [make_v1_record() for _ in range(30)],
-    )
-    write_avro(
-        OUTPUT_DIR / "product_v2.avro",
-        SCHEMA_DIR / "product_v2.avsc",
-        [make_v2_record() for _ in range(30)],
-    )
-    print("Done. Both Avro files ready for Demo 1.")
+    v1_avro = OUTPUT_DIR / "product_v1.avro"
+    v2_avro = OUTPUT_DIR / "product_v2.avro"
+
+    write_avro(v1_avro, SCHEMA_DIR / "product_v1.avsc", [make_v1_record() for _ in range(30)])
+    write_avro(v2_avro, SCHEMA_DIR / "product_v2.avsc", [make_v2_record() for _ in range(30)])
+
+    write_index_file(OUTPUT_DIR / "load_v1_index.txt", v1_avro)
+    write_index_file(OUTPUT_DIR / "load_v2_index.txt", v2_avro)
+
+    print("Done. Avro files and BTEQ DEFERRED BY NAME index files ready for Demo 1.")
 
 
 if __name__ == "__main__":

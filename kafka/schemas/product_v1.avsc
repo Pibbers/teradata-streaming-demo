@@ -1,13 +1,12 @@
 {
   "type": "record",
   "name": "Product",
-  "namespace": "com.teradata.demo.avro",
-  "doc": "Product catalogue — initial schema (v1)",
+  "doc": "Product catalogue - initial schema (v1)",
   "fields": [
     {"name": "product_id",  "type": "string",  "doc": "UUID or SKU"},
     {"name": "name",        "type": "string",  "doc": "Product display name"},
     {"name": "price",       "type": "double",  "doc": "Unit price in GBP"},
     {"name": "category",    "type": "string",  "doc": "Top-level category"},
-    {"name": "ts",          "type": "long",    "logicalType": "timestamp-millis", "doc": "Record creation timestamp"}
+    {"name": "ts",          "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "Record creation timestamp"}
   ]
 }

@@ -123,6 +123,47 @@ def encode_avro(record: dict, parsed_schema) -> bytes:
     return buf.getvalue()
 
 
+def encode_json(record: dict) -> bytes:
+    """Serialise as UTF-8 JSON (debug / non-TPT consumers)."""
+    ts_ms = record["ts"]
+    ts_dt = datetime.fromtimestamp(ts_ms / 1000.0, tz=timezone.utc)
+    millis = ts_ms % 1000
+    json_record = {
+        **record,
+        "on_ground": 1 if record["on_ground"] else 0,
+        "pos_date": ts_dt.strftime("%Y-%m-%d"),
+        "ts": f"{ts_dt.strftime('%Y-%m-%d %H:%M:%S')}.{millis:03d}",
+    }
+    return json.dumps(json_record).encode("utf-8")
+
+
+def encode_delimited(record: dict) -> bytes:
+    """Serialise as pipe-delimited UTF-8 text for TPT DataConnector Format='DELIMITED'.
+
+    Column order must match ADSB_SCHEMA in kafka_stream.tbuild exactly:
+      icao24 | callsign | latitude | longitude | altitude | velocity |
+      heading | vertical_rate | on_ground | squawk | pos_date | ts
+    """
+    ts_ms = record["ts"]
+    ts_dt = datetime.fromtimestamp(ts_ms / 1000.0, tz=timezone.utc)
+    millis = ts_ms % 1000
+    fields = [
+        record["icao24"],
+        record["callsign"],
+        record["latitude"],
+        record["longitude"],
+        record["altitude"],
+        record["velocity"],
+        record["heading"],
+        record["vertical_rate"],
+        1 if record["on_ground"] else 0,
+        record["squawk"],
+        ts_dt.strftime("%Y-%m-%d"),
+        f"{ts_dt.strftime('%Y-%m-%d %H:%M:%S')}.{millis:03d}",
+    ]
+    return "|".join(str(f) for f in fields).encode("utf-8")
+
+
 def delivery_report(err, msg):
     if err:
         print(f"[ERROR] {err}")
@@ -135,11 +176,16 @@ def main():
     parser.add_argument("--interval", type=float, default=5.0, help="Seconds between updates per aircraft")
     parser.add_argument("--count", type=int, default=0, help="Total messages to send (0 = unlimited)")
     parser.add_argument("--continuous", action="store_true")
+    parser.add_argument("--format", choices=["avro", "json", "delimited"], default="avro",
+                        help="avro: schemaless Avro (default); json: UTF-8 JSON; "
+                             "delimited: pipe-delimited text for TPT DataConnector")
     args = parser.parse_args()
 
-    with open(SCHEMA_PATH) as f:
-        raw_schema = json.load(f)
-    parsed_schema = fastavro.parse_schema(raw_schema)
+    parsed_schema = None
+    if args.format == "avro":
+        with open(SCHEMA_PATH) as f:
+            raw_schema = json.load(f)
+        parsed_schema = fastavro.parse_schema(raw_schema)
 
     producer = Producer({"bootstrap.servers": args.bootstrap})
 
@@ -151,7 +197,12 @@ def main():
         while args.continuous or args.count == 0 or sent < args.count:
             for ac in aircraft:
                 record = ac.position()
-                payload = encode_avro(record, parsed_schema)
+                if args.format == "avro":
+                    payload = encode_avro(record, parsed_schema)
+                elif args.format == "json":
+                    payload = encode_json(record)
+                else:
+                    payload = encode_delimited(record)
                 producer.produce(args.topic, key=record["icao24"], value=payload, callback=delivery_report)
                 sent += 1
             producer.poll(0)

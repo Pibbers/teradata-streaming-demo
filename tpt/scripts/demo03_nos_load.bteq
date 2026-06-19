@@ -1,0 +1,35 @@
+/* Demo 3 – load weather_obs from the NOS foreign table and show summary */
+.SET ERROROUT STDOUT
+.SET WIDTH 200
+
+.LOGON ${TD_HOST}/${TD_USER},${TD_PASSWORD};
+
+DATABASE ${TD_DATABASE};
+
+DELETE FROM weather_obs ALL;
+
+INSERT INTO weather_obs
+  (station_id, observation_ts, temperature_c, wind_speed_kts,
+   wind_direction, visibility_m, precipitation_mm, pressure_hpa, conditions)
+SELECT
+  TRIM(station_id),
+  CAST(TRIM(observation_ts) AS TIMESTAMP(0) FORMAT 'YYYY-MM-DDBHH:MI:SS'),
+  CAST(TRIM(temperature_c)     AS DECIMAL(5,1)),
+  CAST(TRIM(wind_speed_kts)    AS SMALLINT),
+  CAST(TRIM(wind_direction)    AS SMALLINT),
+  CAST(TRIM(visibility_m)      AS INTEGER),
+  CAST(TRIM(precipitation_mm)  AS DECIMAL(6,2)),
+  CAST(TRIM(pressure_hpa)      AS DECIMAL(7,1)),
+  TRIM(conditions)
+FROM weather_nos_ft;
+
+SELECT station_id,
+       COUNT(*)      AS obs_count,
+       AVG(temperature_c) AS avg_temp_c,
+       MAX(wind_speed_kts) AS max_wind_kts
+FROM   weather_obs
+GROUP  BY station_id
+ORDER  BY station_id;
+
+.LOGOFF;
+.QUIT;

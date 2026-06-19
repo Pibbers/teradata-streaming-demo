@@ -1,9 +1,12 @@
 # Environment — never commit real credentials
 .env
 
-# Generated sample data
+# Generated sample data (recreated by generate_product_avro.py)
 data/sample/*.avro
 data/sample/*.csv
+data/sample/*.txt
+data/sample/*.idx
+data/sample/*.bteq
 
 # Flink job artifacts
 flink/jars/*.jar

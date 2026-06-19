@@ -34,13 +34,13 @@ DATABASE ${TD_DATABASE};
 DROP TABLE avro_product_stage;
 DROP TABLE avro_product;
 
-/* Staging: raw Avro container file as BLOB */
+/* Staging: raw Avro Object Container File bytes as BLOB.
+   Loaded via BTEQ .IMPORT VARTEXT ... AS DEFERRED BY NAME.
+   AvroContainerSplit then splits each BLOB into individual DATASET rows. */
 CREATE TABLE avro_product_stage
 (
-  stage_id    INTEGER GENERATED ALWAYS AS IDENTITY,
-  loaded_ts   TIMESTAMP(0) DEFAULT CURRENT_TIMESTAMP(0),
-  source_file VARCHAR(255),
-  container   BLOB
+  stage_id  INTEGER  NOT NULL,
+  container BLOB
 )
 PRIMARY INDEX (stage_id);
 

@@ -1,60 +1,99 @@
 /*=============================================================
-  Demo 2: Continuous streaming from Kafka to Teradata via TPT
-  Consumes Avro-serialized SensorEvent messages from Kafka
-  and streams them directly into the sensor_events table.
+  Demo 2: Continuous streaming from Kafka into Teradata via TPT
+  Consumes pipe-delimited AircraftPosition messages published
+  by adsb_producer.py (--format delimited) and streams them into
+  the adsb_positions table using the STREAM operator.
+
+  The producer must be running before this job is started:
+    python3 kafka/producers/adsb_producer.py \
+        --bootstrap localhost:29092 --format delimited --continuous
+
+  Variables (set by run_tbuild.sh from container environment):
+    TD_HOST  TD_USER  TD_PASSWORD  TD_DATABASE
+    KAFKA_BOOTSTRAP (default: kafka:9092)
+    KAFKA_TOPIC     (default: adsb-positions)
+
+  SCHEMA column order matches encode_delimited() in adsb_producer.py:
+    icao24 | callsign | latitude | longitude | altitude | velocity |
+    heading | vertical_rate | on_ground | squawk | pos_date | ts
+
+  Format='DELIMITED' requires ALL schema columns to be VARCHAR — typed
+  conversion is handled by CAST in the APPLY INSERT statement.
 =============================================================*/
 
-DEFINE JOB KAFKA_TO_TERADATA
-DESCRIPTION 'Stream SensorEvent Avro records from Kafka into Teradata'
+DEFINE JOB ADSB_KAFKA_TO_TERADATA
+DESCRIPTION 'Stream ADS-B pipe-delimited positions from Kafka into adsb_positions'
 (
-  DEFINE SCHEMA SENSOR_SCHEMA
+  DEFINE SCHEMA ADSB_SCHEMA
   (
-    event_id   VARCHAR(36),
-    device_id  VARCHAR(20),
-    event_type VARCHAR(20),
-    value      FLOAT,
-    unit       VARCHAR(10),
-    location   VARCHAR(50),
-    ts         VARCHAR(30),   -- Avro timestamp decoded as string then cast
-    quality    BYTEINT
+    icao24        VARCHAR(6),
+    callsign      VARCHAR(8),
+    latitude      VARCHAR(20),    /* FLOAT delivered as text; CAST in INSERT   */
+    longitude     VARCHAR(20),
+    altitude      VARCHAR(10),    /* INTEGER delivered as text                 */
+    velocity      VARCHAR(20),
+    heading       VARCHAR(20),
+    vertical_rate VARCHAR(10),
+    on_ground     VARCHAR(1),     /* 0 or 1 as text                            */
+    squawk        VARCHAR(4),
+    pos_date      VARCHAR(10),    /* "YYYY-MM-DD"                              */
+    ts            VARCHAR(30)     /* "YYYY-MM-DD HH:MI:SS.mmm"                */
   );
 
   DEFINE OPERATOR KAFKA_CONSUMER
   TYPE DATACONNECTOR PRODUCER
-  SCHEMA SENSOR_SCHEMA
+  SCHEMA ADSB_SCHEMA
   ATTRIBUTES
   (
-    VARCHAR DirectoryPath       = '/tmp',
-    VARCHAR FileName            = 'kafka_stream_dummy',
-    VARCHAR Format              = 'Delimited',
-    /* Kafka-specific attributes */
-    VARCHAR ConnectorName       = 'Kafka',
-    VARCHAR TopicName           = '$(KAFKA_TOPIC)',
-    VARCHAR BootstrapServers    = '$(KAFKA_BOOTSTRAP)',
-    VARCHAR GroupId             = 'tpt-demo-consumer',
-    VARCHAR AutoOffsetReset     = 'earliest',
-    INTEGER BatchSize           = 1000,
-    INTEGER PollInterval        = 5000
+    VARCHAR DirectoryPath    = '/tmp',
+    VARCHAR FileName         = 'adsb_stream_dummy',
+    VARCHAR Format           = 'DELIMITED',
+    VARCHAR TextDelimiter    = '|',
+    VARCHAR ConnectorName    = 'Kafka',
+    VARCHAR TopicName        = '$(KAFKA_TOPIC)',
+    VARCHAR BootstrapServers = '$(KAFKA_BOOTSTRAP)',
+    VARCHAR GroupId          = 'tpt-adsb-consumer',
+    VARCHAR AutoOffsetReset  = 'earliest',
+    INTEGER BatchSize        = 500,
+    INTEGER PollInterval     = 2000
   );
 
   DEFINE OPERATOR TD_INSERTER
   TYPE STREAM
-  SCHEMA SENSOR_SCHEMA
+  SCHEMA ADSB_SCHEMA
   ATTRIBUTES
   (
     VARCHAR TdpId         = '$(TD_HOST)',
     VARCHAR UserName      = '$(TD_USER)',
     VARCHAR UserPassword  = '$(TD_PASSWORD)',
-    VARCHAR TargetTable   = '$(TD_DATABASE).sensor_events'
+    VARCHAR TargetTable   = '$(TD_DATABASE).adsb_positions',
+    VARCHAR LogTable      = '$(TD_DATABASE).adsb_positions_LT',
+    VARCHAR ErrorTable    = '$(TD_DATABASE).adsb_positions_ET'
   );
 
-  APPLY
+  STEP MAIN_STEP
   (
-    'INSERT INTO $(TD_DATABASE).sensor_events
-     (event_id, device_id, event_type, value, unit, location, ts, quality)
-     VALUES (:event_id, :device_id, :event_type, :value, :unit, :location,
-             CAST(:ts AS TIMESTAMP FORMAT ''YYYY-MM-DDBHH:MI:SS.S(3)''), :quality);'
-  )
-  TO OPERATOR (TD_INSERTER)
-  SELECT * FROM OPERATOR (KAFKA_CONSUMER);
+    APPLY
+    (
+      'INSERT INTO $(TD_DATABASE).adsb_positions
+         (icao24, callsign, pos_date, latitude, longitude,
+          altitude, velocity, heading, vertical_rate,
+          on_ground, squawk, ts)
+       VALUES
+         (:icao24,
+          :callsign,
+          CAST(:pos_date AS DATE FORMAT ''YYYY-MM-DD''),
+          CAST(:latitude AS FLOAT),
+          CAST(:longitude AS FLOAT),
+          CAST(:altitude AS INTEGER),
+          CAST(:velocity AS FLOAT),
+          CAST(:heading AS FLOAT),
+          CAST(:vertical_rate AS INTEGER),
+          CAST(:on_ground AS BYTEINT),
+          :squawk,
+          CAST(:ts AS TIMESTAMP(3) FORMAT ''YYYY-MM-DDBHH:MI:SS.S(3)''));'
+    )
+    TO OPERATOR (TD_INSERTER)
+    SELECT * FROM OPERATOR (KAFKA_CONSUMER);
+  );
 );

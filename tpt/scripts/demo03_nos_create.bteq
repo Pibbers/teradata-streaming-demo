@@ -1,0 +1,40 @@
+/* Demo 3 – create NOS foreign table over MinIO CSV weather files.
+   HOST_IP must be the IP reachable by Teradata (the Docker host IP).
+   minio_nos_auth was created by setup_demo_tables.bteq. */
+.SET ERROROUT STDOUT
+.SET WIDTH 200
+.SET ERRORLEVEL 3807 SEVERITY 0
+.SET ERRORLEVEL 5612 SEVERITY 0
+.SET ERRORLEVEL 3803 SEVERITY 0
+
+.LOGON ${TD_HOST}/${TD_USER},${TD_PASSWORD};
+
+DATABASE ${TD_DATABASE};
+
+DROP TABLE weather_nos_ft;
+
+CREATE FOREIGN TABLE weather_nos_ft,
+  EXTERNAL SECURITY INVOKER TRUSTED minio_nos_auth
+(
+  station_id        VARCHAR(4)   CHARACTER SET LATIN,
+  observation_ts    VARCHAR(30)  CHARACTER SET LATIN,
+  temperature_c     VARCHAR(10)  CHARACTER SET LATIN,
+  wind_speed_kts    VARCHAR(5)   CHARACTER SET LATIN,
+  wind_direction    VARCHAR(5)   CHARACTER SET LATIN,
+  visibility_m      VARCHAR(7)   CHARACTER SET LATIN,
+  precipitation_mm  VARCHAR(7)   CHARACTER SET LATIN,
+  pressure_hpa      VARCHAR(8)   CHARACTER SET LATIN,
+  conditions        VARCHAR(10)  CHARACTER SET LATIN
+)
+USING (
+  LOCATION  ('/S3/${HOST_IP}:9000/demo-csv/raw/weather/')
+  STOREDAS   CSV
+  HEADER     ('TRUE')
+)
+NO PRIMARY INDEX;
+
+/* Sanity-check: how many CSV rows landed? */
+SELECT COUNT(*) AS nos_row_count FROM weather_nos_ft;
+
+.LOGOFF;
+.QUIT;

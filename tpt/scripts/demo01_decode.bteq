@@ -1,0 +1,39 @@
+/* Demo 1 – split BLOB containers into DATASET rows, then query with dot notation.
+   AvroContainerSplit is the documented path for loading Avro Object Container Files
+   into Teradata DATASET columns (direct CAST from BLOB is not supported).
+   Each row in avro_product holds one Avro record; both v1 and v2 schema versions
+   coexist in the same column — schema evolution without ETL rewrites. */
+.SET ERROROUT STDOUT
+.SET WIDTH 200
+
+.LOGON ${TD_HOST}/${TD_USER},${TD_PASSWORD};
+
+DATABASE ${TD_DATABASE};
+
+/* Show what landed in staging (one BLOB per container file) */
+SELECT stage_id FROM avro_product_stage ORDER BY stage_id;
+
+/* Split each Avro container BLOB into individual DATASET rows */
+INSERT INTO avro_product (container_id, avro_obj_id, avro)
+SELECT T.out_container_id, T.avro_object_id, T.avro_value
+FROM AvroContainerSplit(
+  ON (SELECT stage_id, container FROM avro_product_stage)
+) T;
+
+/* Verify: 30 rows from each container */
+SELECT container_id, COUNT(*) AS records FROM avro_product GROUP BY 1 ORDER BY 1;
+
+/* Validate all rows */
+SELECT AVRO_CHECK(avro) AS validity, COUNT(*) AS cnt FROM avro_product GROUP BY 1;
+
+/* Schema evolution: v1 rows return NULL for the three v2-only fields */
+SELECT TOP 5
+  container_id                  AS ver,
+  avro.."product_id"            AS product_id,
+  avro.."price"                 AS price,
+  avro.."description"           AS description,
+  avro.."discount_pct"          AS discount_pct
+FROM avro_product ORDER BY 1, 2;
+
+.LOGOFF;
+.QUIT;

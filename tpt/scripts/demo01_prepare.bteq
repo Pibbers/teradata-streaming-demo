@@ -1,0 +1,14 @@
+/* Demo 1 – clear staging tables before each run */
+.SET ERROROUT STDOUT
+.SET WIDTH 200
+.SET ERRORLEVEL 3807 SEVERITY 0   /* object not found  */
+
+.LOGON ${TD_HOST}/${TD_USER},${TD_PASSWORD};
+
+DATABASE ${TD_DATABASE};
+
+DELETE FROM avro_product_stage ALL;
+DELETE FROM avro_product ALL;
+
+.LOGOFF;
+.QUIT;

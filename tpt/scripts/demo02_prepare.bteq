@@ -1,0 +1,16 @@
+/* Demo 2 – drop TPT STREAM log/error tables from any prior run.
+   These are created automatically by the STREAM operator; leaving them
+   behind causes a restart attempt on the next tbuild invocation. */
+.SET ERROROUT STDOUT
+.SET WIDTH 200
+.SET ERRORLEVEL 3807 SEVERITY 0   /* suppress "object not found" */
+
+.LOGON ${TD_HOST}/${TD_USER},${TD_PASSWORD};
+
+DATABASE ${TD_DATABASE};
+
+DROP TABLE adsb_positions_LT;
+DROP TABLE adsb_positions_ET;
+
+.LOGOFF;
+.QUIT;
