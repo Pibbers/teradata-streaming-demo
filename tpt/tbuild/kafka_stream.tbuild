@@ -45,17 +45,14 @@ DESCRIPTION 'Stream ADS-B pipe-delimited positions from Kafka into adsb_position
   SCHEMA ADSB_SCHEMA
   ATTRIBUTES
   (
-    VARCHAR DirectoryPath    = '/tmp',
-    VARCHAR FileName         = 'adsb_stream_dummy',
-    VARCHAR Format           = 'DELIMITED',
-    VARCHAR TextDelimiter    = '|',
-    VARCHAR ConnectorName    = 'Kafka',
-    VARCHAR TopicName        = '$(KAFKA_TOPIC)',
-    VARCHAR BootstrapServers = '$(KAFKA_BOOTSTRAP)',
-    VARCHAR GroupId          = 'tpt-adsb-consumer',
-    VARCHAR AutoOffsetReset  = 'earliest',
-    INTEGER BatchSize        = 500,
-    INTEGER PollInterval     = 2000
+    VARCHAR DirectoryPath       = '/tmp',
+    VARCHAR FileName            = 'adsb_stream_dummy',
+    VARCHAR OpenMode            = 'Read',
+    VARCHAR EnableScan          = 'No',
+    VARCHAR Format              = 'DELIMITED',
+    VARCHAR TextDelimiter       = '|',
+    VARCHAR AccessModuleName    = 'libkafkaaxsmod.so',
+    VARCHAR AccessModuleInitStr = '-M C -T $(KAFKA_TOPIC) -B $(KAFKA_BOOTSTRAP) -P 0 -W 15'
   );
 
   DEFINE OPERATOR TD_INSERTER

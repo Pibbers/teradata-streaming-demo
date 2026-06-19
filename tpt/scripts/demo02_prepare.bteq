@@ -9,6 +9,8 @@
 
 DATABASE ${TD_DATABASE};
 
+DELETE FROM adsb_positions ALL;
+
 DROP TABLE adsb_positions_LT;
 DROP TABLE adsb_positions_ET;
 

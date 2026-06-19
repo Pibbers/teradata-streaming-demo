@@ -161,7 +161,7 @@ def encode_delimited(record: dict) -> bytes:
         ts_dt.strftime("%Y-%m-%d"),
         f"{ts_dt.strftime('%Y-%m-%d %H:%M:%S')}.{millis:03d}",
     ]
-    return "|".join(str(f) for f in fields).encode("utf-8")
+    return ("|".join(str(f) for f in fields) + "\n").encode("utf-8")
 
 
 def delivery_report(err, msg):

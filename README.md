@@ -270,8 +270,159 @@ WHERE avro.."discount_pct" > 20.0;
 
 ---
 
+## Demo 2: Kafka → TPT STREAM
+
+**Topic:** Continuous near-real-time INSERT into Teradata directly from a Kafka topic using the TPT STREAM operator and the Kafka Access Module (`libkafkaaxsmod.so`).
+
+### What it demonstrates
+
+- The TPT Kafka Access Module connecting to a live Kafka topic and streaming pipe-delimited messages into Teradata with no intermediary file
+- `Format='DELIMITED'` with all-VARCHAR schema — the correct approach when source messages are plain text (not TPT binary format)
+- Typed column conversion: all VARCHAR schema fields cast to their target types (`FLOAT`, `INTEGER`, `BYTEINT`, `DATE`, `TIMESTAMP(3)`) inside the `APPLY INSERT`
+- Partitioned target table (`PPI` on `pos_date`) — the STREAM operator inserts directly into the correct partition
+- Explicit `LogTable` / `ErrorTable` in the user database so the STREAM operator has CREATE TABLE rights
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `kafka/schemas/adsb_position.avsc` | Avro schema for the ADS-B message (reference; not used by this demo's TPT path) |
+| `kafka/producers/adsb_producer.py` | Synthetic ADS-B producer; `--format delimited` writes pipe-delimited text with `\n` terminator per message |
+| `tpt/tbuild/kafka_stream.tbuild` | TPT job: DataConnector (Kafka Access Module) → STREAM operator |
+| `tpt/scripts/demo02_prepare.bteq` | Truncates `adsb_positions`; drops `adsb_positions_LT` / `adsb_positions_ET` from any prior run |
+| `tpt/scripts/demo02_verify.bteq` | Post-run row count and per-aircraft summary query |
+| `demos/02-kafka-tpt-stream/run.sh` | Orchestrates all steps end-to-end |
+
+### How to run
+
+```bash
+# From project root
+bash demos/02-kafka-tpt-stream/run.sh
+```
+
+### What to expect
+
+```
+══════════════════════════════════════════════
+  Demo 2: Kafka → Teradata TPT STREAM (ADS-B)
+══════════════════════════════════════════════
+
+── 1/3  Clearing TPT and Kafka state from any prior run
+      Delete completed. 0 rows removed.        ← or 100 if re-run
+      Topic recreated.
+
+── 2/3  Starting TPT STREAM job (background) then producing messages
+      TPT connects to kafka:9092 inside the demo-net network.
+      Waiting 5 seconds for TPT to connect...
+
+      Publishing 100 ADS-B messages (10 aircraft × 10 cycles × 1s interval)...
+      [timestamp] 50 ADS-B messages sent to adsb-positions
+      [timestamp] 100 ADS-B messages sent to adsb-positions
+      Producer done. TPT will exit ~15 seconds after the last message.
+
+      KAFKA_AXSMOD: Ending due to -rwait 15 timeout
+      TD_INSERTER: Rows Inserted: 100
+      TD_INSERTER: Total Rows in Error Table: 0
+      Job ttuuser completed successfully
+
+── 3/3  Verifying rows in adsb_positions
+
+  positions_received   earliest_ts              latest_ts              aircraft_seen
+  ------------------   -------------------      -------------------    -------------
+                 100   2026-06-19 12:46:47.621  2026-06-19 12:46:55    10
+
+  icao24  callsign  position_count  avg_altitude_ft
+  ------  --------  --------------  ---------------
+  4073d6  TOM3XT                10  3.69E+004
+  3950f2  AFR674                10  3.80E+004
+  ...
+```
+
+### How it works
+
+```
+1. Prepare
+   └─ BTEQ truncates adsb_positions + drops STREAM operator work tables
+   └─ Kafka topic deleted and recreated (clean partition offset)
+   └─ TPT checkpoint file cleared (twbrmcp)
+
+2. TPT STREAM job starts (background)
+   └─ DataConnector PRODUCER + Kafka Access Module (libkafkaaxsmod.so)
+   └─ AccessModuleInitStr: -M C (Consumer) -T <topic> -B <broker> -P 0 (partition 0) -W 15 (15s idle timeout)
+   └─ Format=DELIMITED, TextDelimiter='|' — parses pipe-separated lines, one Kafka message = one row
+
+3. Python producer sends 100 messages while TPT is connected
+   └─ 10 synthetic aircraft × 10 position updates × 1s interval ≈ 10 seconds
+   └─ Each message: icao24|callsign|lat|lon|alt|vel|hdg|vrate|on_ground|squawk|pos_date|ts\n
+   └─ The \n is the DELIMITED record terminator — required so the parser treats each message as one row
+
+4. TPT idle timeout fires (15s after last message)
+   └─ STREAM operator flushes and commits all rows
+   └─ All 100 rows land in adsb_positions in one load phase (4 seconds)
+   └─ Job exits 0
+```
+
+**Key technical constraints** (discovered during implementation):
+
+| Constraint | Detail |
+|---|---|
+| `AccessModuleName` / `AccessModuleInitStr` required | Named attributes like `ConnectorName`, `TopicName`, `BootstrapServers` are **not** valid DataConnector attributes — they are silently ignored. The correct API is `AccessModuleName = 'libkafkaaxsmod.so'` with CLI-style `-M C -T -B -P -W` flags |
+| All schema columns must be VARCHAR | `Format='DELIMITED'` requires every schema column to be VARCHAR/CLOB; typed conversion is done via `CAST` in the `APPLY INSERT` |
+| `\n` record terminator required | DELIMITED format uses newlines as record separators; messages without `\n` are concatenated by the access module into one giant "record", causing field overflow |
+| Kafka Access Module reads from offset 0 | With `PRESERVE_RESTART_INFO=YES` and a cleared checkpoint, the module reads from the start of the partition; topic is recreated each run so offset 0 = first new message |
+| LogTable / ErrorTable must be explicit | STREAM operator defaults to creating work tables in DBC; specify `LogTable` and `ErrorTable` in the user database |
+| No `-S y` flag | The `-S` flag causes "Failed to open Properties file" on this version; omit it |
+
+### Table
+
+```sql
+CREATE MULTISET TABLE adsb_positions (
+  icao24        CHAR(6)      NOT NULL,
+  callsign      VARCHAR(8),
+  pos_date      DATE         NOT NULL,    -- stored for PPI; populated by CAST(:pos_date AS DATE)
+  latitude      DECIMAL(9,6) NOT NULL,
+  longitude     DECIMAL(10,6) NOT NULL,
+  altitude      INTEGER,
+  velocity      DECIMAL(7,2),
+  heading       DECIMAL(6,2),
+  vertical_rate INTEGER,
+  on_ground     BYTEINT      DEFAULT 0,
+  squawk        CHAR(4),
+  ts            TIMESTAMP(3) NOT NULL,
+  ingest_ts     TIMESTAMP(0) DEFAULT CURRENT_TIMESTAMP(0)
+)
+PRIMARY INDEX (icao24)
+PARTITION BY RANGE_N(pos_date BETWEEN DATE '2024-01-01' AND DATE '2030-12-31' EACH INTERVAL '1' DAY);
+```
+
+### Sample queries
+
+```sql
+-- Recent position fixes
+SELECT icao24, callsign, latitude, longitude, altitude, ts
+FROM demo_db.adsb_positions
+WHERE pos_date = CURRENT_DATE
+ORDER BY ts DESC;
+
+-- Aircraft at cruise altitude (> 30,000 ft)
+SELECT icao24, callsign, AVG(altitude) AS avg_alt_ft, COUNT(*) AS fixes
+FROM demo_db.adsb_positions
+GROUP BY 1, 2
+HAVING AVG(altitude) > 30000
+ORDER BY avg_alt_ft DESC;
+
+-- Ingest latency (time between event and landing in Teradata)
+SELECT icao24,
+       AVG( (CAST(ingest_ts AS TIMESTAMP(3)) - ts) SECOND(4) ) AS avg_lag_secs
+FROM demo_db.adsb_positions
+GROUP BY 1
+ORDER BY 1;
+```
+
+---
+
 ## Further reading
 
 - Teradata DATASET Data Type — B035-1198 (Avro Object Container File loading)
 - Teradata Parallel Transporter Reference Guide — B035-2436
-- TPT Kafka Access Module documentation
+- TPT Kafka Access Module — B035-2447 (Access Module Reference)
