@@ -209,7 +209,10 @@ services:
 
   # ─── Kafka Connect (S3 Sink for Demo 3) ────────────────────
   kafka-connect:
-    image: confluentinc/cp-kafka-connect:7.6.1
+    image: td-demo-kafka-connect:latest   # built from kafka-connect/Dockerfile
+    build:
+      context: ./kafka-connect
+      dockerfile: Dockerfile
     hostname: kafka-connect
     networks: [demo-net]
     ports:
@@ -235,12 +238,6 @@ services:
       CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
     volumes:
       - ./kafka/connect:/etc/kafka/connect-configs
-    command:
-      - bash
-      - -c
-      - |
-        confluent-hub install --no-prompt confluentinc/kafka-connect-s3:latest
-        /etc/confluent/docker/run
     logging: *default-logging
 
   # ─── TPT (Teradata Parallel Transporter) ───────────────────
@@ -254,6 +251,9 @@ services:
       TD_USER: "${TD_USER}"
       TD_PASSWORD: "${TD_PASSWORD}"
       TD_DATABASE: "${TD_DATABASE:-demo_db}"
+      HOST_IP: "${HOST_IP}"
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:-minioadmin}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-minioadmin}"
     volumes:
       - ./tpt/tbuild:/tpt/tbuild
       - ./tpt/scripts:/tpt/scripts

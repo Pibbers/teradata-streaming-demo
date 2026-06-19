@@ -1,64 +1,154 @@
 /* ============================================================
-   Create demo database and tables in Teradata.
-   Run once before executing any demo.
-   Usage: bteq < setup_demo_tables.bteq
+   Teradata Streaming Demo — One-time Setup Script
+   Creates the demo database, all tables, NOS authorization
+   objects, DATALAKE object, and seeds the aircraft registry.
+
+   Variables substituted by perl before piping to BTEQ:
+     ${TD_HOST}   ${TD_USER}   ${TD_PASSWORD}
+     ${TD_DATABASE}  ${HOST_IP}
+     ${MINIO_ROOT_USER}  ${MINIO_ROOT_PASSWORD}
+
+   Usage (from run_setup.sh):
+     perl -pe 's/\$\{([^}]+)\}/$ENV{$1}/ge' script | bteq
+
+   Idempotent: safe to re-run; drops and recreates all objects.
 ============================================================ */
 
 .SET ERROROUT STDOUT
+.SET WIDTH 200
+
+/* Suppress "object not found" on DROP and "already exists" on CREATE */
+.SET ERRORLEVEL 3807 SEVERITY 0
+.SET ERRORLEVEL 5612 SEVERITY 0
+.SET ERRORLEVEL 3803 SEVERITY 0
+
 .LOGON ${TD_HOST}/${TD_USER},${TD_PASSWORD};
 
-/* ── Database ─────────────────────────────────────────────── */
+/* ── 1. Database ─────────────────────────────────────────── */
 CREATE DATABASE ${TD_DATABASE} FROM DBC
-  AS PERM = 1e9
-  SPOOL = 1e9;
+  AS PERM = 2e9 SPOOL = 2e9;
 
 DATABASE ${TD_DATABASE};
 
-/* ── Demo 1: Avro BLOB staging table ─────────────────────── */
-CREATE TABLE avro_blob_stage
+/* ── 2. Demo 1: Product Avro tables ─────────────────────── */
+DROP TABLE avro_product_stage;
+DROP TABLE avro_product;
+
+/* Staging: raw Avro container file as BLOB */
+CREATE TABLE avro_product_stage
 (
-  row_id      INTEGER GENERATED ALWAYS AS IDENTITY,
-  load_ts     TIMESTAMP(0) DEFAULT CURRENT_TIMESTAMP,
+  stage_id    INTEGER GENERATED ALWAYS AS IDENTITY,
+  loaded_ts   TIMESTAMP(0) DEFAULT CURRENT_TIMESTAMP(0),
   source_file VARCHAR(255),
-  payload     BLOB                          /* raw Avro bytes */
+  container   BLOB
 )
-PRIMARY INDEX (row_id);
+PRIMARY INDEX (stage_id);
 
-CREATE TABLE avro_blob_stage_log  (ERRORCODE INTEGER, ERRORTXT  VARCHAR(4096));
-CREATE TABLE avro_blob_stage_err1 (row_id INTEGER, ErrorCode INTEGER, ErrorField VARCHAR(64));
-CREATE TABLE avro_blob_stage_err2 (row_id INTEGER, ErrorCode INTEGER, ErrorField VARCHAR(64));
-
-/* ── Demo 2: Kafka streaming target ──────────────────────── */
-CREATE TABLE sensor_events
+/* Target: DATASET column, one row per Avro record */
+CREATE MULTISET TABLE avro_product
 (
-  event_id    CHAR(36),
-  device_id   VARCHAR(20),
-  event_type  VARCHAR(20),
-  value       FLOAT,
-  unit        VARCHAR(10),
-  location    VARCHAR(50),
-  ts          TIMESTAMP(3),
-  quality     BYTEINT
+  container_id  INTEGER,
+  avro_obj_id   INTEGER,
+  avro          DATASET(2097088000) INLINE LENGTH 64000 STORAGE FORMAT AVRO
 )
-PRIMARY INDEX (device_id);
+PRIMARY INDEX (container_id);
 
-/* ── Demo 5: Reference lookup table (enrichment) ────────── */
-CREATE TABLE device_registry
+/* ── 3. Demo 2: ADS-B positions (streaming target) ───────── */
+/* pos_date is a stored DATE column used for PPI — populated   */
+/* explicitly by TPT / INSERT as CAST(ts AS DATE)              */
+DROP TABLE adsb_positions;
+
+CREATE MULTISET TABLE adsb_positions
 (
-  device_id    VARCHAR(20),
-  device_name  VARCHAR(100),
-  owner        VARCHAR(100),
-  install_date DATE,
-  site_code    CHAR(8)
+  icao24        CHAR(6)          NOT NULL,
+  callsign      VARCHAR(8),
+  pos_date      DATE             NOT NULL,
+  latitude      DECIMAL(9,6)     NOT NULL,
+  longitude     DECIMAL(10,6)    NOT NULL,
+  altitude      INTEGER,
+  velocity      DECIMAL(7,2),
+  heading       DECIMAL(6,2),
+  vertical_rate INTEGER,
+  on_ground     BYTEINT          DEFAULT 0,
+  squawk        CHAR(4),
+  ts            TIMESTAMP(3)     NOT NULL,
+  ingest_ts     TIMESTAMP(0)     DEFAULT CURRENT_TIMESTAMP(0)
 )
-PRIMARY INDEX (device_id);
+PRIMARY INDEX (icao24)
+PARTITION BY RANGE_N(
+  pos_date BETWEEN DATE '2024-01-01' AND DATE '2030-12-31' EACH INTERVAL '1' DAY
+);
 
-/* Seed some reference data */
-INSERT INTO device_registry VALUES ('device-001', 'Sensor Alpha',   'Operations',  '2023-01-15', 'PLANT-A ');
-INSERT INTO device_registry VALUES ('device-002', 'Sensor Beta',    'Maintenance', '2023-02-01', 'PLANT-A ');
-INSERT INTO device_registry VALUES ('device-003', 'Sensor Gamma',   'Operations',  '2023-03-10', 'PLANT-B ');
-INSERT INTO device_registry VALUES ('device-004', 'Sensor Delta',   'Maintenance', '2023-04-22', 'PLANT-B ');
-INSERT INTO device_registry VALUES ('device-005', 'Sensor Epsilon', 'Engineering', '2023-05-05', 'DOCK-3  ');
+/* ── 4. Demo 3: Weather observations (mini-batch target) ──── */
+DROP TABLE weather_obs;
+
+CREATE MULTISET TABLE weather_obs
+(
+  station_id      CHAR(4)        NOT NULL,
+  observation_ts  TIMESTAMP(0)   NOT NULL,
+  temperature_c   DECIMAL(5,1),
+  wind_speed_kts  SMALLINT,
+  wind_direction  SMALLINT,
+  visibility_m    INTEGER,
+  precipitation_mm DECIMAL(6,2),
+  pressure_hpa    DECIMAL(7,1),
+  conditions      VARCHAR(10),
+  ingest_ts       TIMESTAMP(0)   DEFAULT CURRENT_TIMESTAMP(0)
+)
+PRIMARY INDEX (station_id, observation_ts);
+
+/* ── 5. Demo 5: Aircraft registry (lookup reference) ──────── */
+DROP TABLE aircraft_registry;
+
+CREATE SET TABLE aircraft_registry
+(
+  icao24        CHAR(6)       NOT NULL,
+  registration  VARCHAR(10),
+  aircraft_type VARCHAR(10),
+  manufacturer  VARCHAR(50),
+  operator      VARCHAR(100),
+  country       CHAR(2),
+  engine_count  BYTEINT,
+  engine_type   VARCHAR(20)
+)
+UNIQUE PRIMARY INDEX (icao24);
+
+/* Seed registry data — matches the synthetic FLEET in adsb_producer.py */
+INSERT INTO aircraft_registry VALUES ('4ca87a','EI-FNH','A320','Airbus','Aer Lingus','IE',2,'Turbofan');
+INSERT INTO aircraft_registry VALUES ('400a5b','G-CIVB','B747','Boeing','British Airways','GB',4,'Turbofan');
+INSERT INTO aircraft_registry VALUES ('3c4b0f','D-AIHY','A321','Airbus','Lufthansa','DE',2,'Turbofan');
+INSERT INTO aircraft_registry VALUES ('3950f2','F-GKXV','A320','Airbus','Air France','FR',2,'Turbofan');
+INSERT INTO aircraft_registry VALUES ('34618a','EC-LZD','A320','Airbus','Iberia','ES',2,'Turbofan');
+INSERT INTO aircraft_registry VALUES ('4841d8','PH-BGA','B747','Boeing','KLM','NL',4,'Turbofan');
+INSERT INTO aircraft_registry VALUES ('4b1803','HB-JDA','A333','Airbus','Swiss','CH',2,'Turbofan');
+INSERT INTO aircraft_registry VALUES ('440a45','G-VWEB','A340','Airbus','Virgin Atlantic','GB',4,'Turbofan');
+INSERT INTO aircraft_registry VALUES ('4073d6','G-TUII','B787','Boeing','TUI Airways','GB',2,'Turbofan');
+INSERT INTO aircraft_registry VALUES ('3f7062','EI-DYG','B737','Boeing','Ryanair','IE',2,'Turbofan');
+
+/* ── 6. Authorization objects ────────────────────────────── */
+/* NOS: MinIO access key credentials for reading S3 buckets   */
+/* (endpoint URL is given per-foreign-table in LOCATION)      */
+REPLACE AUTHORIZATION minio_nos_auth
+AS INVOKER TRUSTED
+  USER '${MINIO_ROOT_USER}' PASSWORD '${MINIO_ROOT_PASSWORD}';
+
+/* OTF: Hive Metastore catalog (unauthenticated in this demo) */
+REPLACE AUTHORIZATION hms_catalog_auth
+AS INVOKER TRUSTED
+  USER '' PASSWORD '';
+
+/* OTF: MinIO object store credentials for Iceberg files       */
+REPLACE AUTHORIZATION minio_storage_auth
+AS INVOKER TRUSTED
+  USER '${MINIO_ROOT_USER}' PASSWORD '${MINIO_ROOT_PASSWORD}';
+
+/* ── 7. NOS Foreign Tables (Demo 3) ─────────────────────── */
+/* These are created after data arrives — see Demo 3 run.sh  */
+/* Placeholder comment only; run.sh executes these dynamically */
+
+/* ── 8. DATALAKE object for Iceberg OTF (Demos 4 & 5) ───── */
+/* DATALAKE is created after Demo 4 populates Iceberg          */
+/* See demos/04-kafka-flink-iceberg/run.sh                    */
 
 .LOGOFF;
 .QUIT;

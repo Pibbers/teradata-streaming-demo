@@ -1,0 +1,16 @@
+{
+  "type": "record",
+  "name": "Product",
+  "namespace": "com.teradata.demo.avro",
+  "doc": "Product catalogue — evolved schema (v2). Adds description, subcategory, discount_pct as optional fields. All new fields have default null so v2 reader can read v1 data.",
+  "fields": [
+    {"name": "product_id",    "type": "string",  "doc": "UUID or SKU"},
+    {"name": "name",          "type": "string",  "doc": "Product display name"},
+    {"name": "price",         "type": "double",  "doc": "Unit price in GBP"},
+    {"name": "category",      "type": "string",  "doc": "Top-level category"},
+    {"name": "ts",            "type": "long",    "logicalType": "timestamp-millis", "doc": "Record creation timestamp"},
+    {"name": "description",   "type": ["null", "string"],  "default": null, "doc": "Long-form product description (added v2)"},
+    {"name": "subcategory",   "type": ["null", "string"],  "default": null, "doc": "Sub-category within category (added v2)"},
+    {"name": "discount_pct",  "type": ["null", "double"],  "default": null, "doc": "Promotional discount percentage 0–100 (added v2)"}
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "type": "record",
+  "name": "AircraftPosition",
+  "namespace": "com.teradata.demo.adsb",
+  "doc": "ADS-B aircraft position broadcast — used across Demos 2 to 5",
+  "fields": [
+    {"name": "icao24",        "type": "string",  "doc": "24-bit ICAO aircraft address in hex (e.g. 4ca87a)"},
+    {"name": "callsign",      "type": "string",  "doc": "Flight callsign (e.g. BAW123)"},
+    {"name": "latitude",      "type": "double",  "doc": "WGS84 latitude in decimal degrees"},
+    {"name": "longitude",     "type": "double",  "doc": "WGS84 longitude in decimal degrees"},
+    {"name": "altitude",      "type": "int",     "doc": "Barometric altitude in feet"},
+    {"name": "velocity",      "type": "double",  "doc": "Ground speed in knots"},
+    {"name": "heading",       "type": "double",  "doc": "True track angle 0–360°"},
+    {"name": "vertical_rate", "type": "int",     "doc": "Vertical rate in ft/min (positive = climbing)"},
+    {"name": "on_ground",     "type": "boolean", "doc": "True if aircraft is on the ground"},
+    {"name": "squawk",        "type": "string",  "doc": "4-digit Mode A squawk code"},
+    {"name": "ts",            "type": "long",    "logicalType": "timestamp-millis", "doc": "Message timestamp (epoch ms)"}
+  ]
+}
