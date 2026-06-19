@@ -1,0 +1,18 @@
+# Environment — never commit real credentials
+.env
+
+# Generated sample data
+data/sample/*.avro
+data/sample/*.csv
+
+# Flink job artifacts
+flink/jars/*.jar
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Editor
+.vscode/
+*.swp

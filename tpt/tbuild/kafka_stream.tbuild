@@ -1,0 +1,60 @@
+/*=============================================================
+  Demo 2: Continuous streaming from Kafka to Teradata via TPT
+  Consumes Avro-serialized SensorEvent messages from Kafka
+  and streams them directly into the sensor_events table.
+=============================================================*/
+
+DEFINE JOB KAFKA_TO_TERADATA
+DESCRIPTION 'Stream SensorEvent Avro records from Kafka into Teradata'
+(
+  DEFINE SCHEMA SENSOR_SCHEMA
+  (
+    event_id   VARCHAR(36),
+    device_id  VARCHAR(20),
+    event_type VARCHAR(20),
+    value      FLOAT,
+    unit       VARCHAR(10),
+    location   VARCHAR(50),
+    ts         VARCHAR(30),   -- Avro timestamp decoded as string then cast
+    quality    BYTEINT
+  );
+
+  DEFINE OPERATOR KAFKA_CONSUMER
+  TYPE DATACONNECTOR PRODUCER
+  SCHEMA SENSOR_SCHEMA
+  ATTRIBUTES
+  (
+    VARCHAR DirectoryPath       = '/tmp',
+    VARCHAR FileName            = 'kafka_stream_dummy',
+    VARCHAR Format              = 'Delimited',
+    /* Kafka-specific attributes */
+    VARCHAR ConnectorName       = 'Kafka',
+    VARCHAR TopicName           = '$(KAFKA_TOPIC)',
+    VARCHAR BootstrapServers    = '$(KAFKA_BOOTSTRAP)',
+    VARCHAR GroupId             = 'tpt-demo-consumer',
+    VARCHAR AutoOffsetReset     = 'earliest',
+    INTEGER BatchSize           = 1000,
+    INTEGER PollInterval        = 5000
+  );
+
+  DEFINE OPERATOR TD_INSERTER
+  TYPE STREAM
+  SCHEMA SENSOR_SCHEMA
+  ATTRIBUTES
+  (
+    VARCHAR TdpId         = '$(TD_HOST)',
+    VARCHAR UserName      = '$(TD_USER)',
+    VARCHAR UserPassword  = '$(TD_PASSWORD)',
+    VARCHAR TargetTable   = '$(TD_DATABASE).sensor_events'
+  );
+
+  APPLY
+  (
+    'INSERT INTO $(TD_DATABASE).sensor_events
+     (event_id, device_id, event_type, value, unit, location, ts, quality)
+     VALUES (:event_id, :device_id, :event_type, :value, :unit, :location,
+             CAST(:ts AS TIMESTAMP FORMAT ''YYYY-MM-DDBHH:MI:SS.S(3)''), :quality);'
+  )
+  TO OPERATOR (TD_INSERTER)
+  SELECT * FROM OPERATOR (KAFKA_CONSUMER);
+);

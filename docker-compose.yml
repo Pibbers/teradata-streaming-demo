@@ -1,0 +1,264 @@
+name: td-streaming-demo
+
+# ============================================================
+# Teradata Streaming Demo — Docker Compose
+# ============================================================
+# Start foundation only:   docker compose up -d kafka minio minio-init
+# Start all services:      docker compose up -d
+# Teradata database runs externally at TD_HOST (see .env)
+# ============================================================
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+networks:
+  demo-net:
+    driver: bridge
+
+volumes:
+  kafka-data:
+  minio-data:
+  mysql-data:
+  flink-jars:
+
+services:
+
+  # ─── Kafka (KRaft mode, no Zookeeper) ──────────────────────
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    hostname: kafka
+    networks: [demo-net]
+    ports:
+      - "${KAFKA_EXTERNAL_PORT:-29092}:29092"   # host access
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      CLUSTER_ID: "${KAFKA_CLUSTER_ID}"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,PLAINTEXT_HOST://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 168
+    healthcheck:
+      test: kafka-topics --bootstrap-server localhost:9092 --list > /dev/null 2>&1
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    logging: *default-logging
+
+  # ─── MinIO (S3-compatible object store) ────────────────────
+  minio:
+    image: minio/minio:latest
+    hostname: minio
+    networks: [demo-net]
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio-data:/data
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:-minioadmin}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-minioadmin}"
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    logging: *default-logging
+
+  # ─── MinIO bucket initialisation ───────────────────────────
+  minio-init:
+    image: minio/mc:latest
+    networks: [demo-net]
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:-minioadmin}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-minioadmin}"
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD};
+        mc mb --ignore-existing local/iceberg;
+        mc mb --ignore-existing local/demo-csv;
+        mc mb --ignore-existing local/demo-avro;
+        echo 'MinIO buckets ready.';
+      "
+    restart: "no"
+
+  # ─── MySQL (Hive Metastore backend) ────────────────────────
+  mysql:
+    image: mysql:8.2
+    hostname: mysql
+    networks: [demo-net]
+    volumes:
+      - mysql-data:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:-rootpassword}"
+      MYSQL_DATABASE: "${MYSQL_DATABASE:-metastore}"
+      MYSQL_USER: "${MYSQL_USER:-hive}"
+      MYSQL_PASSWORD: "${MYSQL_PASSWORD:-hive}"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "--password=${MYSQL_ROOT_PASSWORD:-rootpassword}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    logging: *default-logging
+
+  # ─── Hive Metastore (Iceberg catalog) ──────────────────────
+  hive-metastore:
+    image: docker-hive-metastore:latest
+    hostname: hive-metastore
+    networks: [demo-net]
+    ports:
+      - "9083:9083"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      HIVE_DB_HOSTNAME: "${HIVE_DB_HOSTNAME:-mysql}"
+      HIVE_DB_NAME: "${HIVE_DB_NAME:-metastore}"
+      HIVE_DB_USER: "${HIVE_DB_USER:-hive}"
+      HIVE_DB_PASSWORD: "${HIVE_DB_PASSWORD:-hive}"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/localhost/9083' 2>/dev/null || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    logging: *default-logging
+
+  # ─── Flink JobManager ──────────────────────────────────────
+  flink-jobmanager:
+    image: flink-demo:latest   # built from flink/Dockerfile
+    build:
+      context: ./flink
+      dockerfile: Dockerfile
+    hostname: flink-jobmanager
+    networks: [demo-net]
+    ports:
+      - "${FLINK_JOBMANAGER_PORT:-8081}:8081"
+    command: jobmanager
+    depends_on:
+      hive-metastore:
+        condition: service_healthy
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 4
+        state.backend: filesystem
+        state.checkpoints.dir: s3://iceberg/flink-checkpoints
+        s3.endpoint: http://minio:9000
+        s3.path.style.access: true
+        s3.access-key: ${MINIO_ROOT_USER:-minioadmin}
+        s3.secret-key: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      TD_HOST: "${TD_HOST}"
+      TD_USER: "${TD_USER}"
+      TD_PASSWORD: "${TD_PASSWORD}"
+    volumes:
+      - ./flink/jobs:/opt/flink/jobs
+      - flink-jars:/opt/flink/lib/extra
+    logging: *default-logging
+
+  # ─── Flink TaskManager ─────────────────────────────────────
+  flink-taskmanager:
+    image: flink-demo:latest
+    build:
+      context: ./flink
+      dockerfile: Dockerfile
+    hostname: flink-taskmanager
+    networks: [demo-net]
+    command: taskmanager
+    depends_on:
+      - flink-jobmanager
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 4
+        state.backend: filesystem
+        state.checkpoints.dir: s3://iceberg/flink-checkpoints
+        s3.endpoint: http://minio:9000
+        s3.path.style.access: true
+        s3.access-key: ${MINIO_ROOT_USER:-minioadmin}
+        s3.secret-key: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      TD_HOST: "${TD_HOST}"
+      TD_USER: "${TD_USER}"
+      TD_PASSWORD: "${TD_PASSWORD}"
+    volumes:
+      - ./flink/jobs:/opt/flink/jobs
+      - flink-jars:/opt/flink/lib/extra
+    logging: *default-logging
+
+  # ─── Kafka Connect (S3 Sink for Demo 3) ────────────────────
+  kafka-connect:
+    image: confluentinc/cp-kafka-connect:7.6.1
+    hostname: kafka-connect
+    networks: [demo-net]
+    ports:
+      - "${KAFKA_CONNECT_PORT:-8083}:8083"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: kafka:9092
+      CONNECT_REST_PORT: 8083
+      CONNECT_GROUP_ID: demo-connect-group
+      CONNECT_CONFIG_STORAGE_TOPIC: _connect-configs
+      CONNECT_OFFSET_STORAGE_TOPIC: _connect-offsets
+      CONNECT_STATUS_STORAGE_TOPIC: _connect-status
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
+      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.converters.ByteArrayConverter
+      CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components
+      CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
+    volumes:
+      - ./kafka/connect:/etc/kafka/connect-configs
+    command:
+      - bash
+      - -c
+      - |
+        confluent-hub install --no-prompt confluentinc/kafka-connect-s3:latest
+        /etc/confluent/docker/run
+    logging: *default-logging
+
+  # ─── TPT (Teradata Parallel Transporter) ───────────────────
+  tpt:
+    image: teradata/tpt:latest
+    hostname: tpt
+    networks: [demo-net]
+    environment:
+      accept_license: "Y"
+      TD_HOST: "${TD_HOST}"
+      TD_USER: "${TD_USER}"
+      TD_PASSWORD: "${TD_PASSWORD}"
+      TD_DATABASE: "${TD_DATABASE:-demo_db}"
+    volumes:
+      - ./tpt/tbuild:/tpt/tbuild
+      - ./tpt/scripts:/tpt/scripts
+      - ./data:/tpt/data
+    entrypoint: ["/bin/bash"]
+    stdin_open: true
+    tty: true
+    restart: "no"
