@@ -423,94 +423,83 @@ ORDER BY 1;
 
 ## Demo 3: Kafka → Kafka Connect → MinIO CSV → NOS
 
-**Topic:** Streaming weather observations through a Kafka Connect S3 Sink into MinIO, then querying the CSV files in-place via Teradata Native Object Store (NOS).
+**Topic:** Streaming weather observations through a Kafka Connect S3 Sink into Hive-partitioned MinIO folders, then querying and incrementally loading the data via Teradata Native Object Store (NOS) with path-based partition pruning.
 
 ### What it demonstrates
 
-- The Kafka Connect S3 Sink connector (`ByteArrayFormat`, `flush.size=1`) landing one CSV file per Kafka message in MinIO — no code beyond the connector config
-- `READ_NOS` with `RETURNTYPE('NOSREAD_KEYS')` to enumerate exactly which files Kafka Connect wrote, before touching the schema
-- `READ_NOS` with `RETURNTYPE('NOSREAD_SCHEMA')` for automatic column inference from a CSV header row — useful before committing to a `CREATE FOREIGN TABLE`
-- `CREATE FOREIGN TABLE` as a thin, persistent read layer over the MinIO path; `STOREDAS CSV` with `HEADER('TRUE')` strips the header from each file
-- Typed `INSERT … SELECT` that casts the all-VARCHAR foreign table schema into the typed `weather_obs` columns
+- Kafka Connect S3 Sink (`ByteArrayFormat`, `flush.size=1`, `TimeBasedPartitioner`) landing one CSV file per Kafka message under a Hive-style time-partitioned path: `year=YYYY/month=MM/day=DD/hour=HH/`
+- `READ_NOS` with `RETURNTYPE('NOSREAD_KEYS')` to enumerate exactly which partition folders and files Kafka Connect wrote
+- `CREATE FOREIGN TABLE` with `PATHPATTERN` enabling NOS **partition pruning** — the equivalent of PPI elimination on internal tables; 10–100× faster on large datasets (NOS Orange Book) because object listing and fetching are skipped for non-matching partitions
+- **Incremental load pattern**: the FOREIGN TABLE covers the full MinIO path (all history); each run's `INSERT INTO weather_obs` filters by `$year / $month / $day / $hour` path variables, loading only the current hour's files and leaving earlier hours' rows intact
+- `--fresh` flag for a full clean-slate reset (purges MinIO + clears all `weather_obs` rows)
 
 ### Files
 
 | File | Purpose |
 |------|---------|
-| `kafka/producers/weather_kafka.py` | Publishes full CSV batches (header + 30 rows) to the `weather-csv` Kafka topic |
-| `kafka/connect/s3-sink.json` | S3 Sink connector: ByteArrayFormat, flush.size=1, path `raw/weather-csv/` |
-| `tpt/scripts/demo03_nos_create.bteq` | NOSREAD_KEYS → NOSREAD_SCHEMA → CREATE FOREIGN TABLE + row count |
-| `tpt/scripts/demo03_nos_load.bteq` | Typed INSERT from NOS foreign table into `weather_obs` + summary |
+| `kafka/producers/weather_kafka.py` | Publishes full CSV batches (header + 30 rows) every 5 minutes to the `weather-csv` topic |
+| `kafka/connect/s3-sink.json` | S3 Sink: ByteArrayFormat, flush.size=1, TimeBasedPartitioner → `year=/month=/day=/hour=` |
+| `tpt/scripts/demo03_nos_create.bteq` | NOSREAD_KEYS + CREATE FOREIGN TABLE with PATHPATTERN |
+| `tpt/scripts/demo03_nos_load.bteq` | Incremental INSERT (current-hour partition only) + summary |
+| `tpt/scripts/demo03_nos_prepare.bteq` | Pre-run: drop FOREIGN TABLE only (weather_obs untouched) |
+| `tpt/scripts/demo03_nos_fresh.bteq` | Full reset: drop FOREIGN TABLE + DELETE FROM weather_obs ALL |
 | `demos/03-kafka-csv-minio/run.sh` | Orchestrates all six steps end-to-end |
 
 ### How to run
 
 ```bash
-# From project root
+# From project root — accumulates this hour's data into weather_obs
 bash demos/03-kafka-csv-minio/run.sh
+
+# Full reset: purge MinIO + clear all weather_obs rows, then run fresh
+bash demos/03-kafka-csv-minio/run.sh --fresh
 ```
+
+> **Runtime:** ~11 minutes for the default 3 batches at 5-minute intervals. The demo is designed to be left running while presenting — each batch confirms data flowing through the pipeline.
 
 ### What to expect
 
 ```
-══════════════════════════════════════════════════════
+======================================================
   Demo 3: Kafka → Kafka Connect → MinIO → NOS
-══════════════════════════════════════════════════════
+  Current partition:  year=2026/month=06/day=19/hour=14
+  Weather batches:    3  (interval: 300s)
+  Mode:               FRESH (purge all)
+======================================================
 
-── 1/6  Preparing — clean up any previous run
-      Recreating Kafka topic: weather-csv
-      Purging MinIO prefix: demo-csv/raw/weather-csv/
-      Deleted 0 object(s) from MinIO.
-      Clearing Teradata: weather_nos_ft, weather_obs
-
+── 1/6  Preparing — clean up prior connector and topic
 ── 2/6  Registering Kafka Connect S3 Sink connector
-      Waiting for connector to start......... RUNNING
+      Partitioner: TimeBasedPartitioner → year=2026/month=06/day=19/hour=14/
+      Waiting for connector to start. RUNNING
 
 ── 3/6  Publishing weather batches to Kafka
-      Each batch: 5 stations × 6 hourly offsets = 30 rows + CSV header
-
-      [2026-06-19T12:00:01]  Batch 1/3: 30 rows → weather-csv
-      [2026-06-19T12:00:06]  Batch 2/3: 30 rows → weather-csv
-      [2026-06-19T12:00:11]  Batch 3/3: 30 rows → weather-csv
-      Done. 3 CSV batch(es) published to weather-csv.
+      [2026-06-19T14:50:27]  Batch 1/3: 30 rows → weather-csv
+      [2026-06-19T14:55:27]  Batch 2/3: 30 rows → weather-csv
+      [2026-06-19T15:00:27]  Batch 3/3: 30 rows → weather-csv
 
 ── 4/6  Waiting for Kafka Connect to flush files to MinIO
-      Files found in MinIO: 3 (expected: 3)
+      [15s] Files in MinIO: 3 / 3
 
-── 5/6  NOS: list objects, discover schema, create FOREIGN TABLE
-      A) NOSREAD_KEYS  — list files written by Kafka Connect
-      B) NOSREAD_SCHEMA — infer column names from CSV header
-      C) CREATE FOREIGN TABLE weather_nos_ft
-      D) COUNT(*) sanity check (expect 90 rows)
+── 5/6  NOS: list objects, create FOREIGN TABLE with PATHPATTERN, count rows
 
-  -- A: files in MinIO
-  location                                                     objectlength
-  ----------------------------------------------------------   ------------
-  /S3/.../raw/weather-csv/partition=0/weather-csv+0+00000000            961
-  /S3/.../raw/weather-csv/partition=0/weather-csv+0+00000001            961
-  /S3/.../raw/weather-csv/partition=0/weather-csv+0+00000002            961
+  -- NOSREAD_KEYS: Hive-partitioned paths written by Kafka Connect
+  location
+  -----------------------------------------------------------------------
+  /S3/.../raw/weather-csv/year=2026/month=06/day=19/hour=14/weather-csv+0+0000000000.bin
+  /S3/.../raw/weather-csv/year=2026/month=06/day=19/hour=14/weather-csv+0+0000000001.bin
+  /S3/.../raw/weather-csv/year=2026/month=06/day=19/hour=14/weather-csv+0+0000000002.bin
 
-  -- B: schema discovered from CSV header
-  columnid   columnname        typename
-  --------   ---------------   -------
-         1   station_id        VARCHAR
-         2   observation_ts    VARCHAR
-         3   temperature_c     VARCHAR
-         4   wind_speed_kts    VARCHAR
-         5   wind_direction    VARCHAR
-         6   visibility_m      VARCHAR
-         7   precipitation_mm  VARCHAR
-         8   pressure_hpa      VARCHAR
-         9   conditions        VARCHAR
+  -- FOREIGN TABLE created with PATHPATTERN (partition-aware)
+  nos_row_count: 93   (90 data rows + 3 header rows)
 
-  -- D: row count
-  nos_row_count
-  -------------
-             90
+── 6/6  Incremental load: partition year=2026/month=06/day=19/hour=14
+      WHERE $year='year=2026' AND $month='month=06'
+           AND $day='day=19' AND $hour='hour=14'
+      Prior hours in weather_obs are untouched.
 
-── 6/6  Loading weather_obs from NOS and showing summary
+  *** Insert completed. 90 rows added.
 
-  station_id   obs_count   avg_temp_c   max_wind_kts
+  station_id   total_obs   avg_temp_c   max_wind_kts
   ----------   ---------   ----------   ------------
   EGLL                18       12.40             32
   EHAM                18       15.10             28
@@ -519,51 +508,61 @@ bash demos/03-kafka-csv-minio/run.sh
   KLAX                18       18.60             19
 ```
 
+Running again at a different hour accumulates a second block of 90 rows:
+```
+  station_id   total_obs   avg_temp_c   max_wind_kts
+  ----------   ---------   ----------   ------------
+  EGLL                36       13.10             34
+  ...
+```
+
 ### How it works
 
 ```
 1. Producer (weather_kafka.py)
-   └─ Generates a complete CSV batch per call: header + 5 stations × 6 offsets
+   └─ Generates one CSV batch every 5 minutes: header + 5 stations × 6 offsets (30 rows)
    └─ Encodes as UTF-8 bytes, produces to Kafka topic weather-csv
    └─ One Kafka message = one complete CSV file (including header row)
 
-2. Kafka Connect S3 Sink
-   └─ ByteArrayFormat: writes message bytes as-is — no schema, no transformation
-   └─ flush.size=1: a new S3 file is written after every single Kafka message
-   └─ Path: s3://demo-csv/raw/weather-csv/partition=0/weather-csv+0+NNNNNNNNNN
-   └─ No file extension (ByteArrayFormat omits it — STOREDAS overrides detection)
+2. Kafka Connect S3 Sink — TimeBasedPartitioner
+   └─ ByteArrayFormat: writes message bytes as-is, no schema needed
+   └─ flush.size=1: a new file is written after every single Kafka message
+   └─ TimeBasedPartitioner + WallClock: derives folder path from wall-clock time
+   └─ path.format "'year='yyyy/'month='MM/'day='dd/'hour='HH'"
+      → s3://demo-csv/raw/weather-csv/year=2026/month=06/day=19/hour=14/weather-csv+0+NNN.bin
+   └─ Files from the same hour land in the same folder; a new folder opens on the hour
 
-3. NOS exploration
-   └─ NOSREAD_KEYS: enumerate files before committing to a schema
-   └─ NOSREAD_SCHEMA: infer column names from the CSV header row
-      (STOREDAS('CSV') required to override extension-based detection)
+3. NOS FOREIGN TABLE (partition-aware)
+   └─ LOCATION covers the root path — the table spans all historical partitions
+   └─ PATHPATTERN ('$year/$month/$day/$hour/$filename') names each path level
+   └─ Path variables: $year='year=2026', $month='month=06', $day='day=19', $hour='hour=14'
+   └─ WHERE clause on $var prunes non-matching partitions before any file is fetched
+      (eliminates network I/O — equivalent to PPI elimination on internal tables)
 
-4. FOREIGN TABLE
-   └─ LOCATION recurses into partition=0/ subdirectory automatically
-   └─ HEADER('TRUE') strips the header from each individual file
-   └─ All columns VARCHAR — NOS does no type conversion at the read layer
-
-5. INSERT … SELECT with explicit CASTs
-   └─ observation_ts: CAST(TRIM(…) AS TIMESTAMP(0) FORMAT 'YYYY-MM-DDBHH:MI:SS')
-   └─ Numeric fields: CAST(TRIM(…) AS DECIMAL / SMALLINT / INTEGER)
+4. Incremental INSERT into weather_obs
+   └─ DELETE WHERE observation_ts within current hour (idempotent re-run safety)
+   └─ INSERT … SELECT FROM weather_nos_ft WHERE $year=… AND $month=… AND $day=… AND $hour=…
+   └─ Header rows rejected by type-cast failure (CAST('station_id' AS TIMESTAMP) fails)
+   └─ Prior hours in weather_obs are untouched — data accumulates across runs
 ```
 
 **Key NOS design rules:**
 
 | Rule | Detail |
 |---|---|
-| `STOREDAS` required for extensionless files | `ByteArrayFormat` produces files with no `.csv` extension; `STOREDAS ('CSV')` forces CSV parsing regardless |
-| `HEADER('TRUE')` applies per file | Each file has its own header row; NOS strips it from each file independently |
-| NOS recurses into subdirectories | `partition=0/` created by Kafka Connect's DefaultPartitioner is traversed automatically |
-| All-VARCHAR FOREIGN TABLE | NOS performs no type conversion; do all CAST operations in the consuming query |
-| Two authorization forms | `EXTERNAL SECURITY INVOKER TRUSTED minio_nos_auth` for FOREIGN TABLE; inline JSON `'{"access_id":"...","access_key":"..."}'` for READ_NOS (READ_NOS AUTHORIZATION NVP requires Simplified auth, not INVOKER TRUSTED) |
+| Hive-style partitioning | `year=YYYY/month=MM/day=DD/hour=HH/` enables path pruning and is compatible with Spark, Trino, and other engines |
+| `PATHPATTERN` — the most important NOS performance lever | Eliminates file listing and fetching for non-matching partitions before any I/O; 10–100× faster than unfiltered scans on large datasets |
+| `$var` vs `${VAR}` in BTEQ scripts | `${CURRENT_YEAR}` (curly braces) is replaced by the perl preprocessor; `$year` (no braces) is a Teradata NOS path variable resolved at query time |
+| `HEADER('TRUE')` maps column names but does not suppress header rows from `COUNT(*)` | Header rows from each file appear in raw `SELECT *`; they are rejected during typed INSERT via cast failure |
+| CSV is the default FOREIGN TABLE format on 20.x | `STOREDAS` is not accepted for CSV in `CREATE FOREIGN TABLE USING`; omit it |
+| DEFINER TRUSTED auth for FOREIGN TABLE | `EXTERNAL SECURITY DEFINER TRUSTED` resolves the auth object in the table's own database (`demo_db`); `INVOKER TRUSTED` would look in the session user's database and fail for user `dbc` |
 
 ### Tables
 
 ```sql
--- NOS foreign table (read-only, no physical storage in Teradata)
+-- NOS foreign table (partition-aware, spans full MinIO path)
 CREATE FOREIGN TABLE weather_nos_ft,
-  EXTERNAL SECURITY INVOKER TRUSTED minio_nos_auth
+  EXTERNAL SECURITY DEFINER TRUSTED minio_nos_auth
 (
   station_id        VARCHAR(4),
   observation_ts    VARCHAR(30),
@@ -576,13 +575,13 @@ CREATE FOREIGN TABLE weather_nos_ft,
   conditions        VARCHAR(10)
 )
 USING (
-  LOCATION ('/S3/<host>:9000/demo-csv/raw/weather-csv/')
-  STOREDAS  CSV
-  HEADER   ('TRUE')
+  LOCATION    ('/S3/<host>:9000/demo-csv/raw/weather-csv/')
+  HEADER      ('TRUE')
+  PATHPATTERN ('$year/$month/$day/$hour/$filename')
 )
 NO PRIMARY INDEX;
 
--- Relational target (typed columns, loaded from NOS)
+-- Relational target (typed columns; accumulates across runs)
 CREATE MULTISET TABLE weather_obs (
   station_id       CHAR(4)       NOT NULL,
   observation_ts   TIMESTAMP(0)  NOT NULL,
@@ -602,27 +601,34 @@ CREATE MULTISET TABLE weather_obs (
 After running the demo, connect to Teradata and try:
 
 ```sql
--- Live NOS query (reads MinIO files directly on every execution)
+-- Path-filtered NOS query: reads only the current-hour partition (pruning demo)
+-- $pt_year/$pt_month/$pt_day/$pt_hour are PATHPATTERN variables (pt_ prefix avoids
+-- Teradata reserved-word conflict with YEAR/MONTH/DAY/HOUR interval qualifiers)
 SELECT station_id,
        CAST(TRIM(observation_ts) AS TIMESTAMP(0) FORMAT 'YYYY-MM-DDBHH:MI:SS') AS obs_ts,
-       CAST(TRIM(temperature_c) AS DECIMAL(5,1))  AS temp_c,
-       CAST(TRIM(wind_speed_kts) AS SMALLINT)     AS wind_kts,
+       CAST(TRIM(temperature_c) AS DECIMAL(5,1)) AS temp_c,
        conditions
 FROM demo_db.weather_nos_ft
-WHERE station_id = 'EGLL'
+WHERE $pt_year  = 'year=2026'
+  AND $pt_month = 'month=06'
+  AND $pt_day   = 'day=19'
+  AND $pt_hour  = 'hour=14'
 ORDER BY obs_ts DESC;
 
--- Aggregate from the relational table (post-INSERT)
+-- Full NOS scan across all partitions (no path filter — reads every file)
+SELECT COUNT(*) AS total_nos_rows FROM demo_db.weather_nos_ft;
+
+-- Aggregates from the relational table across all accumulated hours
 SELECT station_id,
-       COUNT(*)              AS obs_count,
-       AVG(temperature_c)   AS avg_temp_c,
-       MAX(wind_speed_kts)  AS max_wind_kts,
-       MIN(pressure_hpa)    AS min_pressure
+       COUNT(*)             AS obs_count,
+       AVG(temperature_c)  AS avg_temp_c,
+       MAX(wind_speed_kts) AS max_wind_kts,
+       MIN(pressure_hpa)   AS min_pressure
 FROM demo_db.weather_obs
 GROUP BY station_id
 ORDER BY station_id;
 
--- IFR / LIFR conditions (low visibility) across all stations
+-- IFR / LIFR conditions across all loaded partitions
 SELECT station_id, observation_ts, visibility_m, conditions
 FROM demo_db.weather_obs
 WHERE conditions IN ('IFR', 'LIFR')

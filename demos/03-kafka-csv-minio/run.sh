@@ -3,25 +3,29 @@
 # Demo 3: Kafka → Kafka Connect S3 Sink → MinIO CSV → Teradata NOS
 # ============================================================
 # Demonstrates:
-#   • weather_kafka.py publishing CSV batch messages to a Kafka topic
-#   • Kafka Connect S3 Sink (ByteArrayFormat, flush.size=1) writing each
-#     Kafka message as a separate CSV file in MinIO
-#   • READ_NOS with NOSREAD_KEYS to list objects written by Kafka Connect
-#   • READ_NOS with NOSREAD_SCHEMA to infer column names from CSV headers
-#   • FOREIGN TABLE over the MinIO path (STOREDAS CSV, HEADER TRUE)
-#   • Bulk INSERT from the NOS foreign table into the relational weather_obs table
+#   • weather_kafka.py publishing CSV batch messages every 5 minutes
+#   • Kafka Connect S3 Sink (ByteArrayFormat, TimeBasedPartitioner) writing
+#     each Kafka message as a file under a Hive-style time partition:
+#       demo-csv/raw/weather-csv/year=YYYY/month=MM/day=DD/hour=HH/
+#   • READ_NOS with NOSREAD_KEYS to list files written by Kafka Connect
+#   • FOREIGN TABLE with PATHPATTERN enabling NOS partition pruning
+#   • Incremental INSERT: only the current-hour partition is loaded;
+#     prior hours in weather_obs are left intact
 #
 # Architecture:
 #   weather_kafka.py → Kafka (weather-csv) → Kafka Connect S3 Sink
-#       → MinIO (demo-csv/raw/weather-csv/) → NOS FOREIGN TABLE → Teradata
+#       → MinIO (year=.../month=.../day=.../hour=.../)
+#       → NOS FOREIGN TABLE (PATHPATTERN)
+#       → INSERT INTO weather_obs WHERE $hour = 'hour=HH'
+#
+# Usage:
+#   bash demos/03-kafka-csv-minio/run.sh           # accumulate this hour
+#   bash demos/03-kafka-csv-minio/run.sh --fresh   # purge MinIO + all rows first
 #
 # Prerequisites:
 #   docker compose up -d   (kafka, kafka-connect, minio, minio-init, tpt)
 #   bash tpt/scripts/run_setup.sh
 #   pip install confluent-kafka boto3
-#
-# Run from project root:
-#   bash demos/03-kafka-csv-minio/run.sh
 # ============================================================
 
 set -euo pipefail
@@ -37,13 +41,18 @@ MINIO_PASS="${MINIO_ROOT_PASSWORD:-minioadmin}"
 CONNECT_URL="http://localhost:${KAFKA_CONNECT_PORT:-8083}"
 CONNECTOR_NAME="demo-weather-s3-sink"
 WEATHER_BATCHES="${WEATHER_BATCHES:-3}"
-WEATHER_INTERVAL="${WEATHER_INTERVAL:-5}"
+WEATHER_INTERVAL="${WEATHER_INTERVAL:-300}"   # 5 minutes between batches
+
+FRESH=0
+for arg in "$@"; do
+  [ "$arg" = "--fresh" ] && FRESH=1
+done
 
 step() { echo ""; echo "── $* ─────────────────────────────────────"; }
 
-# Wrapper: run a BTEQ script in the TPT container, forwarding the current
-# env so run_bteq.sh's perl substitution picks up values from .env rather
-# than the container's stale startup environment.
+# Wrapper: run a BTEQ script inside the TPT container, forwarding current
+# env vars (including date/hour partition) via -e flags so that run_bteq.sh's
+# perl substitution uses values from .env rather than the container's startup env.
 bteq_run() {
   docker compose exec -T \
     -e TD_HOST="$TD_HOST" \
@@ -53,18 +62,32 @@ bteq_run() {
     -e HOST_IP="$HOST_IP" \
     -e MINIO_ROOT_USER="$MINIO_USER" \
     -e MINIO_ROOT_PASSWORD="$MINIO_PASS" \
+    -e CURRENT_YEAR="$CURRENT_YEAR" \
+    -e CURRENT_MONTH="$CURRENT_MONTH" \
+    -e CURRENT_DAY="$CURRENT_DAY" \
+    -e CURRENT_HOUR="$CURRENT_HOUR" \
     tpt bash /tpt/scripts/run_bteq.sh "$1"
 }
 
+# Capture UTC date/hour once — this is the partition Kafka Connect will write
+# and the partition NOS will prune to when loading weather_obs.
+CURRENT_YEAR=$(date -u +%Y)
+CURRENT_MONTH=$(date -u +%m)
+CURRENT_DAY=$(date -u +%d)
+CURRENT_HOUR=$(date -u +%H)
+CURRENT_PARTITION="year=${CURRENT_YEAR}/month=${CURRENT_MONTH}/day=${CURRENT_DAY}/hour=${CURRENT_HOUR}"
+
 echo "======================================================"
 echo "  Demo 3: Kafka → Kafka Connect → MinIO → NOS"
-echo "  MinIO endpoint:   $MINIO_ENDPOINT"
-echo "  Kafka Connect:    $CONNECT_URL"
-echo "  Weather batches:  $WEATHER_BATCHES  (interval: ${WEATHER_INTERVAL}s)"
+echo "  MinIO endpoint:     $MINIO_ENDPOINT"
+echo "  Kafka Connect:      $CONNECT_URL"
+echo "  Current partition:  $CURRENT_PARTITION"
+echo "  Weather batches:    $WEATHER_BATCHES  (interval: ${WEATHER_INTERVAL}s)"
+echo "  Mode:               $([ "$FRESH" = "1" ] && echo "FRESH (purge all)" || echo "ACCUMULATE (add to existing)")"
 echo "======================================================"
 
 # ── Step 1 ─────────────────────────────────────────────────
-step "1/6  Preparing — clean up any previous run"
+step "1/6  Preparing — clean up prior connector and topic"
 
 # Delete connector if it exists from a prior run
 HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$CONNECT_URL/connectors/$CONNECTOR_NAME")
@@ -74,7 +97,7 @@ if [ "$HTTP_STATUS" = "200" ]; then
   sleep 2
 fi
 
-# Delete and recreate the Kafka topic so offsets start from 0
+# Delete and recreate the Kafka topic so offsets reset to 0
 echo "      Recreating Kafka topic: weather-csv"
 docker compose exec -T kafka kafka-topics \
   --bootstrap-server localhost:9092 --delete --topic weather-csv 2>/dev/null || true
@@ -83,9 +106,9 @@ docker compose exec -T kafka kafka-topics \
   --bootstrap-server localhost:9092 --create --topic weather-csv \
   --partitions 1 --replication-factor 1
 
-# Purge previous files from MinIO so NOS sees only this run's data
-echo "      Purging MinIO prefix: demo-csv/raw/weather-csv/"
-python3 - <<'PYEOF'
+if [ "$FRESH" = "1" ]; then
+  echo "      --fresh: purging all objects from MinIO demo-csv/raw/weather-csv/"
+  python3 - <<'PYEOF'
 import os, boto3
 from botocore.client import Config
 endpoint = os.environ.get("MINIO_ENDPOINT", "http://localhost:9000")
@@ -101,37 +124,48 @@ for obj in resp.get("Contents", []):
     deleted += 1
 print(f"      Deleted {deleted} object(s) from MinIO.")
 PYEOF
-
-# Drop the foreign table and clear weather_obs so each run is idempotent
-echo "      Clearing Teradata: weather_nos_ft, weather_obs"
-bteq_run /tpt/scripts/demo03_nos_prepare.bteq
+  echo "      --fresh: dropping weather_nos_ft and purging all weather_obs rows"
+  bteq_run /tpt/scripts/demo03_nos_fresh.bteq
+else
+  # Only drop the FOREIGN TABLE; weather_obs rows from prior hours are preserved
+  echo "      Dropping weather_nos_ft (weather_obs prior-hour rows preserved)"
+  bteq_run /tpt/scripts/demo03_nos_prepare.bteq
+fi
 
 # ── Step 2 ─────────────────────────────────────────────────
 step "2/6  Registering Kafka Connect S3 Sink connector"
 echo "      Connector config: kafka/connect/s3-sink.json"
 echo "      Topic: weather-csv → MinIO bucket: demo-csv"
-echo "      Format: ByteArray (flush.size=1 → one file per Kafka message)"
+echo "      Partitioner: TimeBasedPartitioner → $CURRENT_PARTITION/"
 
 curl -s -X POST "$CONNECT_URL/connectors" \
   -H "Content-Type: application/json" \
   -d @kafka/connect/s3-sink.json > /dev/null
 
 # Poll until connector is RUNNING (max ~20s)
-echo -n "      Waiting for connector to start"
+echo -n "      Waiting for connector+task to start"
 STARTED=0
-for i in $(seq 1 10); do
+for i in $(seq 1 15); do
   sleep 2
-  STATE=$(curl -s "$CONNECT_URL/connectors/$CONNECTOR_NAME/status" \
-    | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('connector',{}).get('state','UNKNOWN'))" 2>/dev/null || echo "UNKNOWN")
+  STATUS_JSON=$(curl -s "$CONNECT_URL/connectors/$CONNECTOR_NAME/status" 2>/dev/null || echo "{}")
+  CONN_STATE=$(echo "$STATUS_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('connector',{}).get('state','UNKNOWN'))" 2>/dev/null || echo "UNKNOWN")
+  TASK_STATE=$(echo "$STATUS_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); tasks=d.get('tasks',[]); print(tasks[0].get('state','NOTSTARTED') if tasks else 'NOTSTARTED')" 2>/dev/null || echo "UNKNOWN")
   echo -n "."
-  if [ "$STATE" = "RUNNING" ]; then
+  if [ "$CONN_STATE" = "RUNNING" ] && [ "$TASK_STATE" = "RUNNING" ]; then
     echo " RUNNING"
     STARTED=1
     break
   fi
+  if [ "$TASK_STATE" = "FAILED" ]; then
+    echo " TASK FAILED"
+    TRACE=$(echo "$STATUS_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); tasks=d.get('tasks',[]); print(tasks[0].get('trace','?')[:300] if tasks else '?')" 2>/dev/null)
+    echo "      $TRACE"
+    echo "      Check: docker compose logs kafka-connect"
+    exit 1
+  fi
 done
 if [ "$STARTED" = "0" ]; then
-  echo " FAILED (last state: $STATE)"
+  echo " FAILED (connector=$CONN_STATE task=$TASK_STATE)"
   echo "      Check: docker compose logs kafka-connect"
   exit 1
 fi
@@ -139,7 +173,7 @@ fi
 # ── Step 3 ─────────────────────────────────────────────────
 step "3/6  Publishing weather batches to Kafka"
 echo "      Each batch: 5 stations × 6 hourly offsets = 30 rows + CSV header"
-echo "      3 Kafka messages → flush.size=1 → 3 CSV files in MinIO"
+echo "      $WEATHER_BATCHES messages → flush.size=1 → $WEATHER_BATCHES files in $CURRENT_PARTITION/"
 echo ""
 python3 kafka/producers/weather_kafka.py \
   --broker "localhost:${KAFKA_EXTERNAL_PORT:-29092}" \
@@ -149,13 +183,17 @@ python3 kafka/producers/weather_kafka.py \
 
 # ── Step 4 ─────────────────────────────────────────────────
 step "4/6  Waiting for Kafka Connect to flush files to MinIO"
-echo "      flush.size=1 → files land almost immediately after each produce()"
-echo "      Sleeping 20s as a safety buffer..."
-sleep 20
+echo "      TimeBasedPartitioner + flush.size=1: files land within seconds of each produce()"
+echo "      Polling for $WEATHER_BATCHES file(s) in MinIO (timeout: 120s)..."
 
-# Verify expected file count before proceeding
 EXPECTED="$WEATHER_BATCHES"
-ACTUAL=$(python3 - <<'PYEOF'
+ACTUAL=0
+WAIT_MAX=120
+WAITED=0
+while [ "$ACTUAL" -lt "$EXPECTED" ] && [ "$WAITED" -lt "$WAIT_MAX" ]; do
+  sleep 5
+  WAITED=$((WAITED + 5))
+  ACTUAL=$(python3 - <<'PYEOF'
 import os, boto3
 from botocore.client import Config
 endpoint = os.environ.get("MINIO_ENDPOINT", "http://localhost:9000")
@@ -168,23 +206,27 @@ resp = s3.list_objects_v2(Bucket="demo-csv", Prefix="raw/weather-csv/")
 print(len(resp.get("Contents", [])))
 PYEOF
 )
-echo "      Files found in MinIO: $ACTUAL (expected: $EXPECTED)"
+  echo "      [${WAITED}s] Files in MinIO: $ACTUAL / $EXPECTED"
+done
+
 if [ "$ACTUAL" -lt "$EXPECTED" ]; then
-  echo "      WARNING: fewer files than expected — sleeping 15s more"
-  sleep 15
+  echo "      WARNING: only $ACTUAL of $EXPECTED files found after ${WAIT_MAX}s — proceeding anyway"
 fi
 
 # ── Step 5 ─────────────────────────────────────────────────
-step "5/6  NOS: list objects, discover schema, create FOREIGN TABLE"
-echo "      A) NOSREAD_KEYS  — list files written by Kafka Connect"
-echo "      B) NOSREAD_SCHEMA — infer column names from CSV header"
-echo "      C) CREATE FOREIGN TABLE weather_nos_ft"
-echo "      D) COUNT(*) sanity check (expect $((WEATHER_BATCHES * 30)) rows)"
+step "5/6  NOS: list objects, create FOREIGN TABLE with PATHPATTERN, count rows"
+echo "      A) NOSREAD_KEYS  — list files (expect $WEATHER_BATCHES .bin files under $CURRENT_PARTITION/)"
+echo "      B) CREATE FOREIGN TABLE weather_nos_ft with PATHPATTERN"
+echo "      C) COUNT(*) over the full FOREIGN TABLE (all partitions)"
 echo ""
 bteq_run /tpt/scripts/demo03_nos_create.bteq
 
 # ── Step 6 ─────────────────────────────────────────────────
-step "6/6  Loading weather_obs from NOS and showing summary"
+step "6/6  Incremental load: partition $CURRENT_PARTITION → weather_obs"
+echo "      WHERE \$year='year=${CURRENT_YEAR}' AND \$month='month=${CURRENT_MONTH}'"
+echo "           AND \$day='day=${CURRENT_DAY}' AND \$hour='hour=${CURRENT_HOUR}'"
+echo "      Prior hours in weather_obs are untouched."
+echo ""
 bteq_run /tpt/scripts/demo03_nos_load.bteq
 
 echo ""
@@ -192,15 +234,20 @@ echo "======================================================"
 echo "  Demo 3 complete!"
 echo ""
 echo "  Pipeline summary:"
-echo "    $WEATHER_BATCHES Kafka messages (CSV batches)"
-echo "    → $ACTUAL files in MinIO  (demo-csv/raw/weather-csv/)"
-echo "    → NOS FOREIGN TABLE weather_nos_ft"
-echo "    → $((WEATHER_BATCHES * 30)) rows loaded into demo_db.weather_obs"
+echo "    $WEATHER_BATCHES Kafka messages"
+echo "    → MinIO: demo-csv/raw/weather-csv/$CURRENT_PARTITION/"
+echo "    → NOS FOREIGN TABLE weather_nos_ft  (full path, PATHPATTERN)"
+echo "    → $((WEATHER_BATCHES * 30)) new rows loaded into demo_db.weather_obs"
+echo "       (accumulates across runs; prior hours are preserved)"
 echo ""
-echo "  Try a live NOS query in Teradata Studio:"
+echo "  Run again (same or different hour) to accumulate more partitions."
+echo "  Run with --fresh to purge MinIO and start from a clean slate."
+echo ""
+echo "  Try in Teradata Studio:"
+echo "    -- Current-hour partition only (PATHPATTERN path pruning):"
 echo "    SELECT * FROM ${TD_DATABASE:-demo_db}.weather_nos_ft"
-echo "    WHERE station_id = 'EGLL';"
-echo ""
-echo "  The NOS FOREIGN TABLE remains — re-run steps 1-4 to"
-echo "  land more batches, then step 6 to ingest them."
+echo "      WHERE \$pt_year = 'year=${CURRENT_YEAR}'"
+echo "        AND \$pt_month = 'month=${CURRENT_MONTH}'"
+echo "        AND \$pt_day = 'day=${CURRENT_DAY}'"
+echo "        AND \$pt_hour = 'hour=${CURRENT_HOUR}';"
 echo "======================================================"

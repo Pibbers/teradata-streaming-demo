@@ -20,8 +20,12 @@
     "flush.size": "1",
     "rotate.interval.ms": "30000",
 
+    "partitioner.class": "io.confluent.connect.storage.partitioner.TimeBasedPartitioner",
+    "path.format": "'year='yyyy/'month='MM/'day='dd/'hour='HH'",
+    "partition.duration.ms": "3600000",
     "locale": "en_US",
     "timezone": "UTC",
+    "timestamp.extractor": "Wallclock",
 
     "key.converter": "org.apache.kafka.connect.storage.StringConverter",
     "value.converter": "org.apache.kafka.connect.converters.ByteArrayConverter",

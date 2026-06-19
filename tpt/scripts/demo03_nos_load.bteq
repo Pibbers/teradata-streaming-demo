@@ -1,19 +1,71 @@
-/* Demo 3 – load weather_obs from the NOS foreign table and show summary */
+/* Demo 3 – incremental load from NOS FOREIGN TABLE into weather_obs.
+   Loads only the current-hour Hive partition; prior hours are untouched.
+
+   Strategy: create a partition-scoped FOREIGN TABLE (weather_nos_ft_load)
+   whose LOCATION points directly at the current hour's folder.  NOS never
+   fetches files outside that folder — equivalent to PATHPATTERN pruning but
+   using LOCATION itself as the filter.
+
+   The persistent weather_nos_ft (root LOCATION + PATHPATTERN) remains for
+   full-history ad-hoc queries; weather_nos_ft_load is created and dropped
+   within this script to handle the incremental insert.
+
+   Variables (substituted by perl in run_bteq.sh, passed via docker compose exec -e):
+     ${TD_HOST}  ${TD_USER}  ${TD_PASSWORD}  ${TD_DATABASE}
+     ${HOST_IP}  ${MINIO_ROOT_USER}  ${MINIO_ROOT_PASSWORD}
+     ${CURRENT_YEAR}  ${CURRENT_MONTH}  ${CURRENT_DAY}  ${CURRENT_HOUR} */
+
 .SET ERROROUT STDOUT
 .SET WIDTH 200
+.SET ERRORLEVEL 3807 SEVERITY 0
+.SET ERRORLEVEL 5612 SEVERITY 0
 
 .LOGON ${TD_HOST}/${TD_USER},${TD_PASSWORD};
 
 DATABASE ${TD_DATABASE};
 
-DELETE FROM weather_obs ALL;
+/* ── Step A: Create partition-scoped FOREIGN TABLE ─────────────────────────
+   LOCATION points directly at the current hour's folder:
+     .../raw/weather-csv/year=YYYY/month=MM/day=DD/hour=HH/
+   Only files inside this folder are fetched — no PATHPATTERN WHERE needed. */
+DROP TABLE weather_nos_ft_load;
 
+CREATE FOREIGN TABLE weather_nos_ft_load,
+  EXTERNAL SECURITY DEFINER TRUSTED minio_nos_auth
+(
+  station_id        VARCHAR(4)   CHARACTER SET LATIN,
+  observation_ts    VARCHAR(30)  CHARACTER SET LATIN,
+  temperature_c     VARCHAR(10)  CHARACTER SET LATIN,
+  wind_speed_kts    VARCHAR(5)   CHARACTER SET LATIN,
+  wind_direction    VARCHAR(5)   CHARACTER SET LATIN,
+  visibility_m      VARCHAR(7)   CHARACTER SET LATIN,
+  precipitation_mm  VARCHAR(7)   CHARACTER SET LATIN,
+  pressure_hpa      VARCHAR(8)   CHARACTER SET LATIN,
+  conditions        VARCHAR(10)  CHARACTER SET LATIN
+)
+USING (
+  LOCATION ('/S3/${HOST_IP}:9000/demo-csv/raw/weather-csv/year=${CURRENT_YEAR}/month=${CURRENT_MONTH}/day=${CURRENT_DAY}/hour=${CURRENT_HOUR}/')
+  HEADER   ('TRUE')
+)
+NO PRIMARY INDEX;
+
+/* ── Step B: Remove current-hour rows from target (idempotent re-run) ──────
+   Deletes only rows within the current hour window; prior hours are untouched. */
+DELETE FROM weather_obs
+WHERE observation_ts >= CAST('${CURRENT_YEAR}-${CURRENT_MONTH}-${CURRENT_DAY} ${CURRENT_HOUR}:00:00'
+                              AS TIMESTAMP(0) FORMAT 'YYYY-MM-DDBHH:MI:SS')
+  AND observation_ts <  CAST('${CURRENT_YEAR}-${CURRENT_MONTH}-${CURRENT_DAY} ${CURRENT_HOUR}:00:00'
+                              AS TIMESTAMP(0) FORMAT 'YYYY-MM-DDBHH:MI:SS') + INTERVAL '1' HOUR;
+
+/* ── Step C: Incremental INSERT from the partition-scoped table ─────────────
+   Reads only the current hour's files.  Type casting rejects header rows
+   (CAST('station_id' AS TIMESTAMP) fails → warning 4375, row skipped). */
 INSERT INTO weather_obs
   (station_id, observation_ts, temperature_c, wind_speed_kts,
    wind_direction, visibility_m, precipitation_mm, pressure_hpa, conditions)
 SELECT
   TRIM(station_id),
-  CAST(TRIM(observation_ts) AS TIMESTAMP(0) FORMAT 'YYYY-MM-DDBHH:MI:SS'),
+  CAST(TRIM(observation_ts)    AS TIMESTAMP(0) FORMAT 'YYYY-MM-DDBHH:MI:SS'),
   CAST(TRIM(temperature_c)     AS DECIMAL(5,1)),
   CAST(TRIM(wind_speed_kts)    AS SMALLINT),
   CAST(TRIM(wind_direction)    AS SMALLINT),
@@ -21,11 +73,16 @@ SELECT
   CAST(TRIM(precipitation_mm)  AS DECIMAL(6,2)),
   CAST(TRIM(pressure_hpa)      AS DECIMAL(7,1)),
   TRIM(conditions)
-FROM weather_nos_ft;
+FROM weather_nos_ft_load;
 
+/* ── Step D: Drop the partition-scoped table (it served its purpose) ────── */
+DROP TABLE weather_nos_ft_load;
+
+/* ── Step E: Summary across all hours in weather_obs ──────────────────────
+   Shows accumulation across multiple runs. */
 SELECT station_id,
-       COUNT(*)      AS obs_count,
-       AVG(temperature_c) AS avg_temp_c,
+       COUNT(*)            AS total_obs,
+       AVG(temperature_c)  AS avg_temp_c,
        MAX(wind_speed_kts) AS max_wind_kts
 FROM   weather_obs
 GROUP  BY station_id

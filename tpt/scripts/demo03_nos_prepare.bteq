@@ -1,4 +1,6 @@
-/* Demo 3 – pre-run cleanup: drop the NOS foreign table and clear weather_obs. */
+/* Demo 3 – pre-run: drop the NOS foreign table so it can be recreated
+   with the current PATHPATTERN settings.  weather_obs rows are left
+   intact (accumulative mode); use demo03_nos_fresh.bteq for a full reset. */
 .SET ERROROUT STDOUT
 .SET ERRORLEVEL 3807 SEVERITY 0
 .SET ERRORLEVEL 5612 SEVERITY 0
@@ -8,7 +10,6 @@
 DATABASE ${TD_DATABASE};
 
 DROP TABLE weather_nos_ft;
-DELETE FROM weather_obs ALL;
 
 .LOGOFF;
 .QUIT;
