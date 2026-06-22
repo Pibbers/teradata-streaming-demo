@@ -423,14 +423,14 @@ ORDER BY 1;
 
 ## Demo 3: Kafka → Kafka Connect → MinIO CSV → NOS
 
-**Topic:** Streaming weather observations through a Kafka Connect S3 Sink into Hive-partitioned MinIO folders, then querying and incrementally loading the data via Teradata Native Object Store (NOS) with path-based partition pruning.
+**Topic:** Streaming weather observations through a Kafka Connect S3 Sink into plain-date MinIO folders, then querying and incrementally loading the data via Teradata Native Object Store (NOS) with typed partition pruning.
 
 ### What it demonstrates
 
-- Kafka Connect S3 Sink (`ByteArrayFormat`, `flush.size=1`, `TimeBasedPartitioner`) landing one CSV file per Kafka message under a Hive-style time-partitioned path: `year=YYYY/month=MM/day=DD/hour=HH/`
+- Kafka Connect S3 Sink (`ByteArrayFormat`, `flush.size=1`, `TimeBasedPartitioner`) landing one CSV file per Kafka message under a plain time-partitioned path: `YYYY-MM-DD/HH/`
 - `READ_NOS` with `RETURNTYPE('NOSREAD_KEYS')` to enumerate exactly which partition folders and files Kafka Connect wrote
-- `CREATE FOREIGN TABLE` with `PATHPATTERN` enabling NOS **partition pruning** — the equivalent of PPI elimination on internal tables; 10–100× faster on large datasets (NOS Orange Book) because object listing and fetching are skipped for non-matching partitions
-- **Incremental load pattern**: the FOREIGN TABLE covers the full MinIO path (all history); each run's `INSERT INTO weather_obs` filters by `$year / $month / $day / $hour` path variables, loading only the current hour's files and leaving earlier hours' rows intact
+- `CREATE FOREIGN TABLE` with `PATHPATTERN` enabling NOS **partition pruning** — the equivalent of PPI elimination on internal tables; 10–100× faster on large datasets because object listing and fetching are skipped for non-matching partitions
+- **Incremental load pattern**: the FOREIGN TABLE covers the full MinIO path (all history); each run's `INSERT INTO weather_obs` uses a scoped LOCATION pointing at the current hour's folder
 - `--fresh` flag for a full clean-slate reset (purges MinIO + clears all `weather_obs` rows)
 
 ### Files
@@ -438,7 +438,7 @@ ORDER BY 1;
 | File | Purpose |
 |------|---------|
 | `kafka/producers/weather_kafka.py` | Publishes full CSV batches (header + 30 rows) every 5 minutes to the `weather-csv` topic |
-| `kafka/connect/s3-sink.json` | S3 Sink: ByteArrayFormat, flush.size=1, TimeBasedPartitioner → `year=/month=/day=/hour=` |
+| `kafka/connect/s3-sink.json` | S3 Sink: ByteArrayFormat, flush.size=1, TimeBasedPartitioner → `YYYY-MM-DD/HH/` |
 | `tpt/scripts/demo03_nos_create.bteq` | NOSREAD_KEYS + CREATE FOREIGN TABLE with PATHPATTERN |
 | `tpt/scripts/demo03_nos_load.bteq` | Incremental INSERT (current-hour partition only) + summary |
 | `tpt/scripts/demo03_nos_prepare.bteq` | Pre-run: drop FOREIGN TABLE only (weather_obs untouched) |
@@ -462,14 +462,14 @@ bash demos/03-kafka-csv-minio/run.sh --fresh
 ```
 ======================================================
   Demo 3: Kafka → Kafka Connect → MinIO → NOS
-  Current partition:  year=2026/month=06/day=19/hour=14
+  Current partition:  2026-06-19/14
   Weather batches:    3  (interval: 300s)
   Mode:               FRESH (purge all)
 ======================================================
 
 ── 1/6  Preparing — clean up prior connector and topic
 ── 2/6  Registering Kafka Connect S3 Sink connector
-      Partitioner: TimeBasedPartitioner → year=2026/month=06/day=19/hour=14/
+      Partitioner: TimeBasedPartitioner → 2026-06-19/14/
       Waiting for connector to start. RUNNING
 
 ── 3/6  Publishing weather batches to Kafka
@@ -482,19 +482,18 @@ bash demos/03-kafka-csv-minio/run.sh --fresh
 
 ── 5/6  NOS: list objects, create FOREIGN TABLE with PATHPATTERN, count rows
 
-  -- NOSREAD_KEYS: Hive-partitioned paths written by Kafka Connect
+  -- NOSREAD_KEYS: paths written by Kafka Connect
   location
   -----------------------------------------------------------------------
-  /S3/.../raw/weather-csv/year=2026/month=06/day=19/hour=14/weather-csv+0+0000000000.bin
-  /S3/.../raw/weather-csv/year=2026/month=06/day=19/hour=14/weather-csv+0+0000000001.bin
-  /S3/.../raw/weather-csv/year=2026/month=06/day=19/hour=14/weather-csv+0+0000000002.bin
+  /S3/.../raw/weather-csv/2026-06-19/14/weather-csv+0+0000000000.bin
+  /S3/.../raw/weather-csv/2026-06-19/14/weather-csv+0+0000000001.bin
+  /S3/.../raw/weather-csv/2026-06-19/14/weather-csv+0+0000000002.bin
 
   -- FOREIGN TABLE created with PATHPATTERN (partition-aware)
   nos_row_count: 93   (90 data rows + 3 header rows)
 
-── 6/6  Incremental load: partition year=2026/month=06/day=19/hour=14
-      WHERE $year='year=2026' AND $month='month=06'
-           AND $day='day=19' AND $hour='hour=14'
+── 6/6  Incremental load: partition 2026-06-19/14 → weather_obs
+      WHERE $var3 = '2026-06-19' AND $var4 = '14'
       Prior hours in weather_obs are untouched.
 
   *** Insert completed. 90 rows added.
@@ -528,20 +527,20 @@ Running again at a different hour accumulates a second block of 90 rows:
    └─ ByteArrayFormat: writes message bytes as-is, no schema needed
    └─ flush.size=1: a new file is written after every single Kafka message
    └─ TimeBasedPartitioner + WallClock: derives folder path from wall-clock time
-   └─ path.format "'year='yyyy/'month='MM/'day='dd/'hour='HH'"
-      → s3://demo-csv/raw/weather-csv/year=2026/month=06/day=19/hour=14/weather-csv+0+NNN.bin
+   └─ path.format "yyyy-MM-dd/HH"
+      → s3://demo-csv/raw/weather-csv/2026-06-19/14/weather-csv+0+NNN.bin
    └─ Files from the same hour land in the same folder; a new folder opens on the hour
 
 3. NOS FOREIGN TABLE (partition-aware)
    └─ LOCATION covers the root path — the table spans all historical partitions
-   └─ PATHPATTERN ('$year/$month/$day/$hour/$filename') names each path level
-   └─ Path variables: $year='year=2026', $month='month=06', $day='day=19', $hour='hour=14'
-   └─ WHERE clause on $var prunes non-matching partitions before any file is fetched
-      (eliminates network I/O — equivalent to PPI elimination on internal tables)
+   └─ PATHPATTERN ('$var1/$var2/$var3/$var4/$var5') names each segment from bucket root
+      $var1=raw, $var2=weather-csv, $var3=date (DATE), $var4=hour (BYTEINT), $var5=file
+   └─ WHERE $var3 = '2026-06-19' AND $var4 = '14' prunes all other partitions before any I/O
+      (string comparisons — PARTITION BY COLUMN causes error 3706 on CSV foreign tables in 20.x)
 
 4. Incremental INSERT into weather_obs
    └─ DELETE WHERE observation_ts within current hour (idempotent re-run safety)
-   └─ INSERT … SELECT FROM weather_nos_ft WHERE $year=… AND $month=… AND $day=… AND $hour=…
+   └─ Scoped FOREIGN TABLE with LOCATION pointing at exactly one hour folder (no PATHPATTERN WHERE needed)
    └─ Header rows rejected by type-cast failure (CAST('station_id' AS TIMESTAMP) fails)
    └─ Prior hours in weather_obs are untouched — data accumulates across runs
 ```
@@ -550,9 +549,11 @@ Running again at a different hour accumulates a second block of 90 rows:
 
 | Rule | Detail |
 |---|---|
-| Hive-style partitioning | `year=YYYY/month=MM/day=DD/hour=HH/` enables path pruning and is compatible with Spark, Trino, and other engines |
+| Plain date/hour partitioning | `YYYY-MM-DD/HH/` is cleaner than Hive `key=value` naming; WHERE clause uses `$var3 = '2026-06-22'` and `$var4 = '08'` (string comparisons) |
 | `PATHPATTERN` — the most important NOS performance lever | Eliminates file listing and fetching for non-matching partitions before any I/O; 10–100× faster than unfiltered scans on large datasets |
-| `$var` vs `${VAR}` in BTEQ scripts | `${CURRENT_YEAR}` (curly braces) is replaced by the perl preprocessor; `$year` (no braces) is a Teradata NOS path variable resolved at query time |
+| `PARTITION BY COLUMN` is Parquet/JSON-only on 20.x | Adding `PARTITION BY COLUMN` to a CSV foreign table triggers error 3706 ("not allowed with JSON/PARQUET table") — omit it; string PATHPATTERN WHERE clauses still prune correctly |
+| PATHPATTERN is matched from bucket root, not from LOCATION | All path segments from the bucket root must be named in PATHPATTERN; LOCATION only scopes which objects are listed |
+| `$var` vs `${VAR}` in BTEQ scripts | `${CURRENT_YEAR}` (curly braces) is replaced by the perl preprocessor; `$var3` (no braces) is a Teradata NOS path variable resolved at query time |
 | `HEADER('TRUE')` maps column names but does not suppress header rows from `COUNT(*)` | Header rows from each file appear in raw `SELECT *`; they are rejected during typed INSERT via cast failure |
 | CSV is the default FOREIGN TABLE format on 20.x | `STOREDAS` is not accepted for CSV in `CREATE FOREIGN TABLE USING`; omit it |
 | DEFINER TRUSTED auth for FOREIGN TABLE | `EXTERNAL SECURITY DEFINER TRUSTED` resolves the auth object in the table's own database (`demo_db`); `INVOKER TRUSTED` would look in the session user's database and fail for user `dbc` |
@@ -561,9 +562,12 @@ Running again at a different hour accumulates a second block of 90 rows:
 
 ```sql
 -- NOS foreign table (partition-aware, spans full MinIO path)
-CREATE FOREIGN TABLE weather_nos_ft,
+-- PATHPATTERN segments from bucket root: $var1=raw, $var2=weather-csv,
+--   $var3=date (e.g. 2026-06-22), $var4=hour (e.g. 14), $var5=filename
+CREATE MULTISET FOREIGN TABLE weather_nos_ft ,FALLBACK ,
   EXTERNAL SECURITY DEFINER TRUSTED minio_nos_auth
 (
+  Location          VARCHAR(2048) CHARACTER SET UNICODE CASESPECIFIC,
   station_id        VARCHAR(4),
   observation_ts    VARCHAR(30),
   temperature_c     VARCHAR(10),
@@ -577,8 +581,9 @@ CREATE FOREIGN TABLE weather_nos_ft,
 USING (
   LOCATION    ('/S3/<host>:9000/demo-csv/raw/weather-csv/')
   HEADER      ('TRUE')
-  PATHPATTERN ('$year/$month/$day/$hour/$filename')
+  PATHPATTERN ('$var1/$var2/$var3/$var4/$var5')
 )
+NO PRIMARY INDEX
 NO PRIMARY INDEX;
 
 -- Relational target (typed columns; accumulates across runs)
@@ -602,17 +607,15 @@ After running the demo, connect to Teradata and try:
 
 ```sql
 -- Path-filtered NOS query: reads only the current-hour partition (pruning demo)
--- $pt_year/$pt_month/$pt_day/$pt_hour are PATHPATTERN variables (pt_ prefix avoids
--- Teradata reserved-word conflict with YEAR/MONTH/DAY/HOUR interval qualifiers)
+-- $var3 and $var4 are PATHPATTERN string variables — compare as string literals
+-- (PARTITION BY COLUMN not used: causes error 3706 on CSV tables in 20.x)
 SELECT station_id,
        CAST(TRIM(observation_ts) AS TIMESTAMP(0) FORMAT 'YYYY-MM-DDBHH:MI:SS') AS obs_ts,
        CAST(TRIM(temperature_c) AS DECIMAL(5,1)) AS temp_c,
        conditions
 FROM demo_db.weather_nos_ft
-WHERE $pt_year  = 'year=2026'
-  AND $pt_month = 'month=06'
-  AND $pt_day   = 'day=19'
-  AND $pt_hour  = 'hour=14'
+WHERE $var3 = '2026-06-19'
+  AND $var4 = '14'
 ORDER BY obs_ts DESC;
 
 -- Full NOS scan across all partitions (no path filter — reads every file)

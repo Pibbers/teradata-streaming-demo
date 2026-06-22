@@ -5,8 +5,8 @@
 # Demonstrates:
 #   • weather_kafka.py publishing CSV batch messages every 5 minutes
 #   • Kafka Connect S3 Sink (ByteArrayFormat, TimeBasedPartitioner) writing
-#     each Kafka message as a file under a Hive-style time partition:
-#       demo-csv/raw/weather-csv/year=YYYY/month=MM/day=DD/hour=HH/
+#     each Kafka message as a file under a plain time partition:
+#       demo-csv/raw/weather-csv/YYYY-MM-DD/HH/
 #   • READ_NOS with NOSREAD_KEYS to list files written by Kafka Connect
 #   • FOREIGN TABLE with PATHPATTERN enabling NOS partition pruning
 #   • Incremental INSERT: only the current-hour partition is loaded;
@@ -14,9 +14,9 @@
 #
 # Architecture:
 #   weather_kafka.py → Kafka (weather-csv) → Kafka Connect S3 Sink
-#       → MinIO (year=.../month=.../day=.../hour=.../)
-#       → NOS FOREIGN TABLE (PATHPATTERN)
-#       → INSERT INTO weather_obs WHERE $hour = 'hour=HH'
+#       → MinIO (YYYY-MM-DD/HH/)
+#       → NOS FOREIGN TABLE (PATHPATTERN string pruning)
+#       → INSERT INTO weather_obs WHERE $var3 = 'YYYY-MM-DD' AND $var4 = 'HH'
 #
 # Usage:
 #   bash demos/03-kafka-csv-minio/run.sh           # accumulate this hour
@@ -75,7 +75,7 @@ CURRENT_YEAR=$(date -u +%Y)
 CURRENT_MONTH=$(date -u +%m)
 CURRENT_DAY=$(date -u +%d)
 CURRENT_HOUR=$(date -u +%H)
-CURRENT_PARTITION="year=${CURRENT_YEAR}/month=${CURRENT_MONTH}/day=${CURRENT_DAY}/hour=${CURRENT_HOUR}"
+CURRENT_PARTITION="${CURRENT_YEAR}-${CURRENT_MONTH}-${CURRENT_DAY}/${CURRENT_HOUR}"
 
 echo "======================================================"
 echo "  Demo 3: Kafka → Kafka Connect → MinIO → NOS"
@@ -223,8 +223,7 @@ bteq_run /tpt/scripts/demo03_nos_create.bteq
 
 # ── Step 6 ─────────────────────────────────────────────────
 step "6/6  Incremental load: partition $CURRENT_PARTITION → weather_obs"
-echo "      WHERE \$year='year=${CURRENT_YEAR}' AND \$month='month=${CURRENT_MONTH}'"
-echo "           AND \$day='day=${CURRENT_DAY}' AND \$hour='hour=${CURRENT_HOUR}'"
+echo "      WHERE \$var3 = '${CURRENT_YEAR}-${CURRENT_MONTH}-${CURRENT_DAY}' AND \$var4 = '${CURRENT_HOUR}'"
 echo "      Prior hours in weather_obs are untouched."
 echo ""
 bteq_run /tpt/scripts/demo03_nos_load.bteq
@@ -236,7 +235,7 @@ echo ""
 echo "  Pipeline summary:"
 echo "    $WEATHER_BATCHES Kafka messages"
 echo "    → MinIO: demo-csv/raw/weather-csv/$CURRENT_PARTITION/"
-echo "    → NOS FOREIGN TABLE weather_nos_ft  (full path, PATHPATTERN)"
+echo "    → NOS FOREIGN TABLE weather_nos_ft  (PATHPATTERN string pruning)"
 echo "    → $((WEATHER_BATCHES * 30)) new rows loaded into demo_db.weather_obs"
 echo "       (accumulates across runs; prior hours are preserved)"
 echo ""
@@ -246,8 +245,6 @@ echo ""
 echo "  Try in Teradata Studio:"
 echo "    -- Current-hour partition only (PATHPATTERN path pruning):"
 echo "    SELECT * FROM ${TD_DATABASE:-demo_db}.weather_nos_ft"
-echo "      WHERE \$pt_year = 'year=${CURRENT_YEAR}'"
-echo "        AND \$pt_month = 'month=${CURRENT_MONTH}'"
-echo "        AND \$pt_day = 'day=${CURRENT_DAY}'"
-echo "        AND \$pt_hour = 'hour=${CURRENT_HOUR}';"
+echo "      WHERE \$var3 = '${CURRENT_YEAR}-${CURRENT_MONTH}-${CURRENT_DAY}'"
+echo "        AND \$var4 = '${CURRENT_HOUR}';"
 echo "======================================================"

@@ -2,16 +2,23 @@
    Runs after Kafka Connect has flushed CSV files to MinIO.
    HOST_IP must be the IP reachable by Teradata (the Docker host IP).
 
+   MinIO path structure (from bucket root):
+     demo-csv/raw/weather-csv/YYYY-MM-DD/HH/weather-csv+0+NNNNNNNNNN.bin
+   PATHPATTERN segments matched from bucket root (not from LOCATION):
+     $var1  — "raw"            (topics.dir prefix)
+     $var2  — "weather-csv"    (Kafka topic / topics folder)
+     $var3  — date partition    (e.g. 2026-06-22, typed DATE)
+     $var4  — hour partition    (e.g. 14, typed BYTEINT)
+     $var5  — filename
+
    Auth notes:
-   - READ_NOS AUTHORIZATION NVP requires inline JSON or a Simplified auth object
-     (not INVOKER TRUSTED); inline JSON credentials are used for NOSREAD_KEYS.
+   - READ_NOS AUTHORIZATION NVP requires inline JSON (not INVOKER/DEFINER TRUSTED).
    - FOREIGN TABLE uses EXTERNAL SECURITY DEFINER TRUSTED minio_nos_auth.
-     DEFINER TRUSTED resolves the auth object in the same database as the
-     FOREIGN TABLE (demo_db), where setup_demo_tables.bteq created it.
-     INVOKER TRUSTED would look in user dbc's own database (DBC) — wrong.
-   - NOSREAD_SCHEMA is omitted: ByteArrayFormat produces .bin files, which
-     Teradata cannot auto-detect as CSV without a STOREDAS hint; STOREDAS is
-     not accepted in the NOSREAD_SCHEMA form of READ_NOS. */
+     DEFINER TRUSTED resolves the auth object in the FOREIGN TABLE's own database
+     (demo_db). INVOKER TRUSTED would look in DBC — error 6938.
+   - NOSREAD_SCHEMA is omitted: ByteArrayFormat produces .bin files which
+     Teradata cannot auto-detect as CSV; STOREDAS is not accepted in the
+     NOSREAD_SCHEMA form of READ_NOS on 20.x. */
 .SET ERROROUT STDOUT
 .SET WIDTH 200
 .SET ERRORLEVEL 3807 SEVERITY 0
@@ -45,33 +52,36 @@ ORDER BY location;
 
 /* ── B: Create FOREIGN TABLE ────────────────────────────────────────────────
    All columns are VARCHAR — typed conversion happens in demo03_nos_load.bteq.
-   CSV is the default format for FOREIGN TABLE; STOREDAS is not needed.
-   HEADER('TRUE') maps the column names from the first row of each file.
-   PATHPATTERN names each path segment so WHERE $pt_year / $pt_month / $pt_day /
-   $pt_hour clauses in queries prune files before they are fetched — the same
-   mechanism as PPI partition elimination on internal tables (10-100x faster on
-   large datasets).  The .bin extension is irrelevant; format is always CSV.
-   Note: $year/$month/$day/$hour conflict with Teradata reserved keywords; the
-   pt_ prefix avoids error 3515 (duplication of column). */
+   CSV is the default format for FOREIGN TABLE on 20.x; STOREDAS is not needed
+   (and causes error 4956 if specified).
+   HEADER('TRUE') maps column names from the first row of each file.
+   PATHPATTERN names each path segment from the bucket root so that WHERE
+   clauses prune files before they are fetched — the same mechanism as PPI
+   partition elimination on internal tables (10-100x faster at scale).
+   Note: PARTITION BY COLUMN causes Teradata 20.x to treat the table as
+   JSON/PARQUET and reject the HEADER NVP (error 3706).  For CSV foreign
+   tables, omit PARTITION BY and use string WHERE comparisons instead:
+     WHERE $var3 = '2026-06-22' AND $var4 = '08' */
 DROP TABLE weather_nos_ft;
 
-CREATE FOREIGN TABLE weather_nos_ft,
+CREATE MULTISET FOREIGN TABLE weather_nos_ft ,FALLBACK ,
   EXTERNAL SECURITY DEFINER TRUSTED minio_nos_auth
 (
-  station_id        VARCHAR(4)   CHARACTER SET LATIN,
-  observation_ts    VARCHAR(30)  CHARACTER SET LATIN,
-  temperature_c     VARCHAR(10)  CHARACTER SET LATIN,
-  wind_speed_kts    VARCHAR(5)   CHARACTER SET LATIN,
-  wind_direction    VARCHAR(5)   CHARACTER SET LATIN,
-  visibility_m      VARCHAR(7)   CHARACTER SET LATIN,
-  precipitation_mm  VARCHAR(7)   CHARACTER SET LATIN,
-  pressure_hpa      VARCHAR(8)   CHARACTER SET LATIN,
-  conditions        VARCHAR(10)  CHARACTER SET LATIN
+  Location          VARCHAR(2048) CHARACTER SET UNICODE CASESPECIFIC,
+  station_id        VARCHAR(4)    CHARACTER SET LATIN,
+  observation_ts    VARCHAR(30)   CHARACTER SET LATIN,
+  temperature_c     VARCHAR(10)   CHARACTER SET LATIN,
+  wind_speed_kts    VARCHAR(5)    CHARACTER SET LATIN,
+  wind_direction    VARCHAR(5)    CHARACTER SET LATIN,
+  visibility_m      VARCHAR(7)    CHARACTER SET LATIN,
+  precipitation_mm  VARCHAR(7)    CHARACTER SET LATIN,
+  pressure_hpa      VARCHAR(8)    CHARACTER SET LATIN,
+  conditions        VARCHAR(10)   CHARACTER SET LATIN
 )
 USING (
   LOCATION    ('/S3/${HOST_IP}:9000/demo-csv/raw/weather-csv/')
   HEADER      ('TRUE')
-  PATHPATTERN ('$pt_year/$pt_month/$pt_day/$pt_hour/$pt_file')
+  PATHPATTERN ('$var1/$var2/$var3/$var4/$var5')
 )
 NO PRIMARY INDEX;
 

@@ -21,7 +21,7 @@
     "rotate.interval.ms": "30000",
 
     "partitioner.class": "io.confluent.connect.storage.partitioner.TimeBasedPartitioner",
-    "path.format": "'year='yyyy/'month='MM/'day='dd/'hour='HH'",
+    "path.format": "yyyy-MM-dd/HH",
     "partition.duration.ms": "3600000",
     "locale": "en_US",
     "timezone": "UTC",

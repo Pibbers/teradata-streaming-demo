@@ -1,14 +1,18 @@
 /* Demo 3 – incremental load from NOS FOREIGN TABLE into weather_obs.
-   Loads only the current-hour Hive partition; prior hours are untouched.
+   Loads only the current-hour partition; prior hours are untouched.
 
    Strategy: create a partition-scoped FOREIGN TABLE (weather_nos_ft_load)
    whose LOCATION points directly at the current hour's folder.  NOS never
    fetches files outside that folder — equivalent to PATHPATTERN pruning but
    using LOCATION itself as the filter.
 
-   The persistent weather_nos_ft (root LOCATION + PATHPATTERN) remains for
-   full-history ad-hoc queries; weather_nos_ft_load is created and dropped
-   within this script to handle the incremental insert.
+   MinIO path for current hour:
+     demo-csv/raw/weather-csv/YYYY-MM-DD/HH/
+   (plain date and zero-padded hour, matching the Kafka Connect path.format)
+
+   The persistent weather_nos_ft (root LOCATION + PATHPATTERN)
+   remains for full-history ad-hoc queries; weather_nos_ft_load is created
+   and dropped within this script to handle the incremental insert.
 
    Variables (substituted by perl in run_bteq.sh, passed via docker compose exec -e):
      ${TD_HOST}  ${TD_USER}  ${TD_PASSWORD}  ${TD_DATABASE}
@@ -26,7 +30,7 @@ DATABASE ${TD_DATABASE};
 
 /* ── Step A: Create partition-scoped FOREIGN TABLE ─────────────────────────
    LOCATION points directly at the current hour's folder:
-     .../raw/weather-csv/year=YYYY/month=MM/day=DD/hour=HH/
+     .../raw/weather-csv/YYYY-MM-DD/HH/
    Only files inside this folder are fetched — no PATHPATTERN WHERE needed. */
 DROP TABLE weather_nos_ft_load;
 
@@ -44,7 +48,7 @@ CREATE FOREIGN TABLE weather_nos_ft_load,
   conditions        VARCHAR(10)  CHARACTER SET LATIN
 )
 USING (
-  LOCATION ('/S3/${HOST_IP}:9000/demo-csv/raw/weather-csv/year=${CURRENT_YEAR}/month=${CURRENT_MONTH}/day=${CURRENT_DAY}/hour=${CURRENT_HOUR}/')
+  LOCATION ('/S3/${HOST_IP}:9000/demo-csv/raw/weather-csv/${CURRENT_YEAR}-${CURRENT_MONTH}-${CURRENT_DAY}/${CURRENT_HOUR}/')
   HEADER   ('TRUE')
 )
 NO PRIMARY INDEX;
