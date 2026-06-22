@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<configuration>
+  <!--
+    S3A FileSystem configuration for MinIO.
+    These properties make Hadoop's FileSystem registry aware of s3a:// (and s3://)
+    so that Iceberg HiveCatalog can access the Iceberg warehouse on MinIO.
+
+    fs.s3.impl maps the legacy s3:// scheme to S3AFileSystem — this is required
+    because Teradata NOS / OTF constructs namespace locations using s3:// scheme.
+    S3AFileSystem reads credentials from fs.s3a.* regardless of the scheme alias.
+  -->
+  <property>
+    <name>fs.s3a.impl</name>
+    <value>org.apache.hadoop.fs.s3a.S3AFileSystem</value>
+  </property>
+  <property>
+    <name>fs.s3.impl</name>
+    <value>org.apache.hadoop.fs.s3a.S3AFileSystem</value>
+  </property>
+  <property>
+    <name>fs.s3a.endpoint</name>
+    <value>http://minio:9000</value>
+  </property>
+  <property>
+    <name>fs.s3a.access.key</name>
+    <value>minioadmin</value>
+  </property>
+  <property>
+    <name>fs.s3a.secret.key</name>
+    <value>minioadmin</value>
+  </property>
+  <property>
+    <name>fs.s3a.path.style.access</name>
+    <value>true</value>
+  </property>
+  <property>
+    <name>fs.s3a.connection.timeout</name>
+    <value>30000</value>
+  </property>
+  <property>
+    <name>fs.s3a.socket.timeout</name>
+    <value>30000</value>
+  </property>
+  <!-- Use only SimpleAWSCredentialsProvider to avoid IAM/EC2 instance metadata
+       provider failures (not on EC2, and jackson-databind class chain issues). -->
+  <property>
+    <name>fs.s3a.aws.credentials.provider</name>
+    <value>org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider</value>
+  </property>
+</configuration>

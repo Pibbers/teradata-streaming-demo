@@ -173,6 +173,7 @@ services:
       TD_HOST: "${TD_HOST}"
       TD_USER: "${TD_USER}"
       TD_PASSWORD: "${TD_PASSWORD}"
+      HADOOP_CONF_DIR: /opt/flink/conf
     volumes:
       - ./flink/jobs:/opt/flink/jobs
       - flink-jars:/opt/flink/lib/extra
@@ -202,6 +203,7 @@ services:
       TD_HOST: "${TD_HOST}"
       TD_USER: "${TD_USER}"
       TD_PASSWORD: "${TD_PASSWORD}"
+      HADOOP_CONF_DIR: /opt/flink/conf
     volumes:
       - ./flink/jobs:/opt/flink/jobs
       - flink-jars:/opt/flink/lib/extra

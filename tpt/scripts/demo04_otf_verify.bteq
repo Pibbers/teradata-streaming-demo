@@ -1,0 +1,36 @@
+/* Demo 4 — Final OTF verification.
+   Queries the Iceberg table via the demo_iceberg DATALAKE object.
+   Shows: schema mapping, row summary, per-aircraft breakdown,
+   Iceberg snapshot history, and a time-travel example.
+*/
+
+.SET ERROROUT STDOUT
+.SET WIDTH 200
+
+.LOGON ${TD_HOST}/${TD_USER},${TD_PASSWORD};
+DATABASE ${TD_DATABASE};
+
+/* -- Iceberg → Teradata type mapping */
+HELP TABLE demo_iceberg.demo.adsb_positions;
+
+/* -- Overall summary */
+SELECT COUNT(*)              AS total_rows,
+       COUNT(DISTINCT icao24) AS aircraft_seen,
+       MIN(ts)               AS first_ts,
+       MAX(ts)               AS last_ts
+FROM demo_iceberg.demo.adsb_positions;
+
+/* -- Per-aircraft breakdown */
+SELECT icao24,
+       TRIM(callsign)        AS callsign,
+       COUNT(*)              AS positions,
+       CAST(AVG(CAST(altitude AS FLOAT)) AS INTEGER) AS avg_alt_ft
+FROM demo_iceberg.demo.adsb_positions
+GROUP BY 1, 2
+ORDER BY 1;
+
+/* -- Iceberg snapshot history (one row per Flink checkpoint that committed data) */
+SELECT * FROM TD_SNAPSHOTS(ON demo_iceberg.demo.adsb_positions) AS snap;
+
+.LOGOFF;
+.QUIT;

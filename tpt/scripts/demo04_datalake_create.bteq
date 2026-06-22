@@ -1,0 +1,68 @@
+/* Demo 4 — Create the DATALAKE object for Iceberg OTF queries.
+   Connects Teradata to the Hive Metastore (Iceberg catalog) and MinIO (storage).
+
+   DATALAKE objects are stored in TD_SERVER_DB.
+   EXTERNAL SECURITY DEFINER TRUSTED resolves auth objects from the DATALAKE's
+   own database, which is TD_SERVER_DB.  Auth objects must therefore exist in
+   TD_SERVER_DB — they are created here before the DATALAKE.
+
+   Contrast with FOREIGN TABLE (Demo 3): the table lives in demo_db, so
+   DEFINER TRUSTED finds auth in demo_db.  INVOKER TRUSTED always resolves
+   against the connecting user's home DB (DBC for user dbc) — error 6938.
+
+   HOST_IP must be the Docker host IP reachable from the Teradata instance.
+   Teradata is external to the Docker network; container hostnames are not
+   reachable from Teradata — use HOST_IP:9083 (HMS) and HOST_IP:9000 (MinIO).
+
+   Variables substituted by perl in run_bteq.sh:
+     ${TD_HOST}  ${TD_USER}  ${TD_PASSWORD}  ${TD_DATABASE}  ${HOST_IP}
+*/
+
+.SET ERROROUT STDOUT
+.SET WIDTH 200
+
+/* Suppress "object not found" on DROP */
+.SET ERRORLEVEL 3807 SEVERITY 0
+
+.LOGON ${TD_HOST}/${TD_USER},${TD_PASSWORD};
+
+/* DATALAKE lives in TD_SERVER_DB — create auth objects there so that
+   EXTERNAL SECURITY DEFINER TRUSTED can find them. */
+DATABASE TD_SERVER_DB;
+
+/* HMS is unauthenticated — Teradata rejects empty credentials (error 3706);
+   use a placeholder. Hive Metastore ignores the user/password on connect. */
+REPLACE AUTHORIZATION hms_catalog_auth
+AS DEFINER TRUSTED
+  USER 'anonymous' PASSWORD 'anonymous';
+
+REPLACE AUTHORIZATION minio_storage_auth
+AS DEFINER TRUSTED
+  USER '${MINIO_ROOT_USER}' PASSWORD '${MINIO_ROOT_PASSWORD}';
+
+DATABASE ${TD_DATABASE};
+
+DROP DATALAKE demo_iceberg;
+
+CREATE DATALAKE demo_iceberg
+  EXTERNAL SECURITY DEFINER TRUSTED CATALOG hms_catalog_auth,
+  EXTERNAL SECURITY DEFINER TRUSTED STORAGE minio_storage_auth
+USING
+  CATALOG_TYPE('hive')
+  CATALOG_LOCATION('thrift://${HOST_IP}:9083')
+  STORAGE_LOCATION('s3://iceberg/warehouse/')
+  STORAGE_ENDPOINT('http://${HOST_IP}:9000')
+  S3_PATH_STYLE_ACCESS('true')
+  STORAGE_REGION('us-east-1')
+  S3_SSL_ENABLED('false')
+  S3_MAX_TASK('1000')
+  S3_MAX_THREADS('1000')
+  S3_MAX_CONNECTIONS('5000')
+TABLE FORMAT iceberg;
+
+/* Verify: list namespaces registered in the Hive catalog.
+   After Flink creates the 'demo' database, it will appear here. */
+HELP DATALAKE demo_iceberg;
+
+.LOGOFF;
+.QUIT;

@@ -664,6 +664,211 @@ ORDER BY observation_ts DESC;
 
 ---
 
+## Demo 4: Kafka → Flink → Iceberg → Teradata OTF
+
+**Topic:** Flink SQL continuously streams ADS-B messages from Kafka into an Apache Iceberg table (Parquet on MinIO, metadata in Hive Metastore). Teradata queries the live Iceberg table via a **DATALAKE** object (OTF) using 3-part dot notation — no ETL, no COPY, no TPT. New rows become visible within ~30 seconds of ingestion.
+
+### What it demonstrates
+
+- Flink SQL checkpointing as the Iceberg commit mechanism: each 30-second checkpoint atomically commits a new Iceberg snapshot, which Teradata reads on the very next SELECT
+- The **DATALAKE** object — Teradata's OTF interface to an Iceberg catalog; connects to Hive Metastore (catalog) + MinIO (storage) with a single DDL object; tables queried via `<datalake>.<namespace>.<table>` 3-part notation
+- `TD_SNAPSHOTS()` table function: lists committed Iceberg snapshots — demonstrates the growing snapshot history as streaming continues
+- Open-lakehouse pattern: Flink writes Parquet data files; Teradata, Spark, Trino can all query the same files simultaneously via the Iceberg catalog
+- Iceberg partitioning by `pos_date` (daily) — enables partition pruning in Teradata OTF queries
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `kafka/producers/adsb_producer.py` | Same ADS-B producer as Demo 2; `--continuous` for streaming, `--count 200` for bounded |
+| `flink/jobs/demo04_stream.sql` | Flink SQL: register Hive catalog, create Iceberg table, streaming INSERT from Kafka (checkpoint 30s) |
+| `flink/jobs/demo04_batch.sql` | Flink SQL: same table + batch INSERT (earliest→latest-offset); exits naturally when all messages processed |
+| `flink/jobs/demo04_drop.sql` | Reset: DROP TABLE + DROP DATABASE — removes Parquet data files from MinIO |
+| `tpt/scripts/demo04_datalake_create.bteq` | CREATE DATALAKE connecting Teradata to HMS + MinIO; HELP DATALAKE to verify |
+| `tpt/scripts/demo04_datalake_drop.bteq` | DROP DATALAKE (reset) |
+| `tpt/scripts/demo04_otf_query.bteq` | Single-line heartbeat: `STATUS rows=N latest=TIMESTAMP` for monitoring loop |
+| `tpt/scripts/demo04_otf_verify.bteq` | Final: HELP TABLE (type mapping), row count, per-aircraft summary, TD_SNAPSHOTS() |
+| `demos/04-kafka-flink-iceberg/run.sh` | Orchestration — dual-mode |
+
+### How to run
+
+```bash
+# From project root — continuous streaming (default); press Ctrl+C to stop
+bash demos/04-kafka-flink-iceberg/run.sh
+
+# Bounded mode — 200 messages; exits automatically
+bash demos/04-kafka-flink-iceberg/run.sh --bounded
+```
+
+### What to expect
+
+**Continuous mode (default):**
+
+```
+======================================================
+  Demo 4: Kafka → Flink → Iceberg → Teradata OTF
+  Flink REST:               http://localhost:8081
+  HMS (host-facing):        192.168.1.x:9083
+  MinIO (host-facing):      192.168.1.x:9000
+  Mode:                     CONTINUOUS (Ctrl+C to stop)
+======================================================
+
+── 1/4  Resetting prior state
+      Dropping Iceberg table via Flink SQL...
+      Topic recreated.
+
+── 2/4  Creating DATALAKE object in Teradata
+      DatabaseName        DatabaseProperties
+      default             'hive.metastore.database.owner'='public'...
+
+── 3/4  Starting Flink job and producer
+      Flink job ID: a3b2c1d4e5f6...
+      Starting producer (continuous, 1s interval, 10 aircraft)...
+
+  Streaming — rows visible in Teradata every ~30s (one Iceberg checkpoint).
+  Press Ctrl+C to stop.
+
+  [12:01:05 UTC]  STATUS rows=0    latest=none
+  [12:01:35 UTC]  STATUS rows=290  latest=2026-06-22 12:01:33.412
+  [12:02:05 UTC]  STATUS rows=580  latest=2026-06-22 12:02:03.891
+  [12:02:35 UTC]  STATUS rows=870  latest=2026-06-22 12:02:33.107
+  ...
+
+^C
+── Stopping producer...
+── Waiting 35s for final Iceberg checkpoint to commit...
+── Cancelling Flink job a3b2c1d4e5f6...
+
+── 4/4  Final snapshot
+
+  ColumnName      IcebergType   TeradataType
+  icao24          STRING        VARCHAR(2000)
+  ts              TIMESTAMP     TIMESTAMP
+  ...
+
+  total_rows   aircraft_seen   first_ts                  last_ts
+  ----------   -------------   ------                    ------
+        1450              10   2026-06-22 12:00:35.121   2026-06-22 12:03:08.447
+
+  icao24   callsign   positions   avg_alt_ft
+  ------   --------   ---------   ----------
+  3950f2   AFR674           145       38000
+  ...
+
+  snapshot_id    committed_at              operation   added_files
+  -----------    -------------------------  ---------  -----------
+  8392847362...  2026-06-22 12:01:05.000   append      1
+  7461928374...  2026-06-22 12:01:35.000   append      1
+  ...
+```
+
+**Bounded mode (`--bounded`):** runs producer (200 messages), Flink batch job reads all messages and commits one snapshot, verify query runs automatically.
+
+### How it works
+
+```
+1. Reset
+   └─ Flink SQL client drops Iceberg table (removes Parquet + metadata from MinIO)
+   └─ DATALAKE dropped from Teradata (safe to recreate)
+   └─ Kafka topic deleted and recreated (clean offset)
+
+2. DATALAKE setup (one-time per session)
+   └─ CREATE DATALAKE demo_iceberg: CATALOG_TYPE='hive', HMS at HOST_IP:9083
+   └─ STORAGE_ENDPOINT=http://HOST_IP:9000 (MinIO, path-style, no SSL)
+   └─ Auth objects (hms_catalog_auth, minio_storage_auth) resolved from demo_db
+   └─ HELP DATALAKE confirms Hive namespaces visible from Teradata
+
+3. Flink streaming INSERT (continuous mode)
+   └─ Creates hive_catalog (Iceberg Flink connector → Hive Metastore)
+   └─ CREATE TABLE IF NOT EXISTS demo.adsb_positions (partitioned by pos_date)
+   └─ CREATE TEMPORARY TABLE kafka_adsb (all-STRING schema, csv '|' format, latest-offset)
+   └─ INSERT: CASTs + TO_TIMESTAMP() on all columns → Iceberg Parquet files on MinIO
+   └─ Checkpoint every 30s (EXACTLY_ONCE) → atomic Iceberg snapshot per checkpoint
+   └─ SQL client exits after submitting; job continues running in Flink cluster
+
+4. Monitoring loop
+   └─ Every 30s: SELECT COUNT(*) + MAX(ts) from demo_iceberg.demo.adsb_positions
+   └─ Row count grows by ~300/interval (10 aircraft × 30s × 1 row/s)
+   └─ Each new count represents a freshly committed Iceberg snapshot
+
+5. Graceful shutdown (Ctrl+C)
+   └─ Producer killed (no new Kafka messages)
+   └─ 35s wait → final checkpoint commits remaining buffered rows
+   └─ Flink job cancelled via REST (PATCH /jobs/{id}?mode=cancel)
+   └─ Final verify: row count, per-aircraft, TD_SNAPSHOTS() history
+```
+
+**Key OTF design rules (from validated vault examples):**
+
+| Rule | Detail |
+|---|---|
+| DATALAKE, not FOREIGN TABLE | Iceberg tables are queried via `CREATE DATALAKE` with `CATALOG_TYPE('hive')`; do not use `CREATE FOREIGN TABLE` for Iceberg |
+| `HOST_IP` in CATALOG_LOCATION and STORAGE_ENDPOINT | Teradata is external to Docker; `hive-metastore:9083` and `minio:9000` are not reachable from Teradata — use `HOST_IP` (set in `.env`) which is exposed via docker-compose port bindings |
+| Auth objects must be in the session database | `INVOKER TRUSTED` resolves auth objects from the active session database; `DATABASE ${TD_DATABASE}` must be set before `CREATE DATALAKE` |
+| `S3_PATH_STYLE_ACCESS('true')` required for MinIO | MinIO uses path-style S3 URLs; virtual-hosted-style (the AWS default) does not work |
+| `S3_SSL_ENABLED('false')` required for HTTP | MinIO in this stack runs HTTP; TLS is not configured |
+| Namespace created by Flink, not Teradata | `CREATE DATABASE via DATALAKE from Teradata → error 7825`; Flink's `CREATE DATABASE IF NOT EXISTS demo` handles namespace creation |
+| Rows visible at checkpoint boundaries | Flink Iceberg sink commits per checkpoint (30s); queries between checkpoints return the previous snapshot's data — this is the expected behaviour |
+| `TD_SNAPSHOTS()` shows commit history | Each checkpoint that added rows creates one snapshot entry; time-travel via `FOR TIMESTAMP AS OF TIMESTAMP '...'` works across these snapshots |
+
+### DATALAKE DDL reference
+
+```sql
+-- Auth objects already created by run_setup.sh in demo_db:
+--   hms_catalog_auth  (INVOKER TRUSTED, USER '', PASSWORD '' — HMS needs no auth)
+--   minio_storage_auth (INVOKER TRUSTED, USER 'minioadmin', PASSWORD 'minioadmin')
+
+DATABASE demo_db;
+
+CREATE DATALAKE demo_iceberg
+  EXTERNAL SECURITY INVOKER TRUSTED CATALOG hms_catalog_auth,
+  EXTERNAL SECURITY INVOKER TRUSTED STORAGE minio_storage_auth
+USING
+  CATALOG_TYPE('hive')
+  CATALOG_LOCATION('thrift://<HOST_IP>:9083')
+  STORAGE_LOCATION('s3://iceberg/warehouse/')
+  STORAGE_ENDPOINT('http://<HOST_IP>:9000')
+  S3_PATH_STYLE_ACCESS('true')
+  STORAGE_REGION('us-east-1')
+  S3_SSL_ENABLED('false')
+TABLE FORMAT iceberg;
+```
+
+### Sample queries
+
+After running the demo, connect to Teradata and try:
+
+```sql
+-- Explore what's in the catalog
+HELP DATALAKE demo_iceberg;
+HELP TABLE demo_iceberg.demo.adsb_positions;
+
+-- Current snapshot (latest committed data)
+SELECT icao24, callsign, latitude, longitude, altitude, ts
+FROM demo_iceberg.demo.adsb_positions
+WHERE pos_date = '2026-06-22'
+ORDER BY ts DESC
+SAMPLE 20;
+
+-- Aggregate across all partitions
+SELECT icao24, TRIM(callsign) AS callsign,
+       COUNT(*) AS fixes,
+       AVG(CAST(altitude AS FLOAT)) AS avg_alt_ft
+FROM demo_iceberg.demo.adsb_positions
+GROUP BY 1, 2
+ORDER BY fixes DESC;
+
+-- Snapshot history (one row per Flink checkpoint that committed data)
+SELECT * FROM TD_SNAPSHOTS('demo_iceberg.demo.adsb_positions');
+
+-- Time travel: read the table as it was at a specific past snapshot
+SELECT COUNT(*) AS rows_at_snapshot
+FROM demo_iceberg.demo.adsb_positions
+FOR TIMESTAMP AS OF TIMESTAMP '2026-06-22 12:01:00';
+```
+
+---
+
 ## Further reading
 
 - Teradata DATASET Data Type — B035-1198 (Avro Object Container File loading)

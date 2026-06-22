@@ -1,0 +1,13 @@
+/* Demo 4 — Drop the DATALAKE object (reset).
+   Safe to run when demo_iceberg does not exist — 3807 suppressed.
+*/
+
+.SET ERROROUT STDOUT
+.SET ERRORLEVEL 3807 SEVERITY 0
+
+.LOGON ${TD_HOST}/${TD_USER},${TD_PASSWORD};
+
+DROP DATALAKE demo_iceberg;
+
+.LOGOFF;
+.QUIT;

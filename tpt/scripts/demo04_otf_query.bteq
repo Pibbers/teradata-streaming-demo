@@ -1,0 +1,17 @@
+/* Demo 4 — Single-line heartbeat for the monitoring loop.
+   Outputs one parseable STATUS line so run.sh can grep for it.
+   Row count reflects the latest committed Iceberg snapshot (30s cadence).
+*/
+
+.SET ERROROUT STDOUT
+.SET WIDTH 200
+
+.LOGON ${TD_HOST}/${TD_USER},${TD_PASSWORD};
+DATABASE ${TD_DATABASE};
+
+SELECT 'STATUS rows=' || TRIM(CAST(COUNT(*) AS VARCHAR(10)))
+    || ' latest=' || COALESCE(TRIM(CAST(MAX(ts) AS VARCHAR(30))), 'none')
+FROM demo_iceberg.demo.adsb_positions;
+
+.LOGOFF;
+.QUIT;
