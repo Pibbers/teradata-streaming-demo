@@ -52,7 +52,7 @@ DESCRIPTION 'Stream ADS-B pipe-delimited positions from Kafka into adsb_position
     VARCHAR Format              = 'DELIMITED',
     VARCHAR TextDelimiter       = '|',
     VARCHAR AccessModuleName    = 'libkafkaaxsmod.so',
-    VARCHAR AccessModuleInitStr = '-M C -T $(KAFKA_TOPIC) -B $(KAFKA_BOOTSTRAP) -P 0 -W 15'
+    VARCHAR AccessModuleInitStr = '-M C -T $(KAFKA_TOPIC) -B $(KAFKA_BOOTSTRAP) -P 0 -W $(KAFKA_IDLE_TIMEOUT)'
   );
 
   DEFINE OPERATOR TD_INSERTER

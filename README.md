@@ -272,71 +272,82 @@ WHERE avro.."discount_pct" > 20.0;
 
 ## Demo 2: Kafka → TPT STREAM
 
-**Topic:** Continuous near-real-time INSERT into Teradata directly from a Kafka topic using the TPT STREAM operator and the Kafka Access Module (`libkafkaaxsmod.so`).
+**Topic:** Near-real-time INSERT into Teradata directly from a live Kafka topic using the TPT STREAM operator and the Kafka Access Module (`libkafkaaxsmod.so`), with rows visible in Teradata every ~5 seconds throughout the run.
 
 ### What it demonstrates
 
 - The TPT Kafka Access Module connecting to a live Kafka topic and streaming pipe-delimited messages into Teradata with no intermediary file
+- `tbuild -l 5` (latency interval) — the key flag that forces the STREAM operator to flush its internal buffers and commit rows to Teradata every 5 seconds, even with a continuously-producing Kafka feed. Without `-l`, the STREAM operator only flushes at end-of-source; rows would never be visible while the producer is running
 - `Format='DELIMITED'` with all-VARCHAR schema — the correct approach when source messages are plain text (not TPT binary format)
 - Typed column conversion: all VARCHAR schema fields cast to their target types (`FLOAT`, `INTEGER`, `BYTEINT`, `DATE`, `TIMESTAMP(3)`) inside the `APPLY INSERT`
 - Partitioned target table (`PPI` on `pos_date`) — the STREAM operator inserts directly into the correct partition
 - Explicit `LogTable` / `ErrorTable` in the user database so the STREAM operator has CREATE TABLE rights
+- Graceful shutdown: Ctrl+C kills the producer; TPT drains remaining buffered messages (controlled by the Kafka idle timeout `-W 30`) then exits cleanly with a final row count
 
 ### Files
 
 | File | Purpose |
 |------|---------|
 | `kafka/schemas/adsb_position.avsc` | Avro schema for the ADS-B message (reference; not used by this demo's TPT path) |
-| `kafka/producers/adsb_producer.py` | Synthetic ADS-B producer; `--format delimited` writes pipe-delimited text with `\n` terminator per message |
-| `tpt/tbuild/kafka_stream.tbuild` | TPT job: DataConnector (Kafka Access Module) → STREAM operator |
+| `kafka/producers/adsb_producer.py` | Synthetic ADS-B producer; `--format delimited` writes pipe-delimited text with `\n` terminator per message; `--continuous` runs indefinitely |
+| `tpt/tbuild/kafka_stream.tbuild` | TPT job: DataConnector (Kafka Access Module) → STREAM operator; idle timeout parameterised via `$(KAFKA_IDLE_TIMEOUT)` |
 | `tpt/scripts/demo02_prepare.bteq` | Truncates `adsb_positions`; drops `adsb_positions_LT` / `adsb_positions_ET` from any prior run |
+| `tpt/scripts/demo02_status.bteq` | Single-line heartbeat query: `STATUS rows=N latest=TIMESTAMP` — used by the monitoring loop |
 | `tpt/scripts/demo02_verify.bteq` | Post-run row count and per-aircraft summary query |
-| `demos/02-kafka-tpt-stream/run.sh` | Orchestrates all steps end-to-end |
+| `demos/02-kafka-tpt-stream/run.sh` | Orchestrates all steps; dual-mode (continuous default / `--bounded`) |
 
 ### How to run
 
 ```bash
-# From project root
+# From project root — continuous streaming (default); press Ctrl+C to stop
 bash demos/02-kafka-tpt-stream/run.sh
+
+# Bounded mode — original 100-message behaviour; exits automatically
+bash demos/02-kafka-tpt-stream/run.sh --bounded
 ```
 
 ### What to expect
 
+**Continuous mode (default):**
+
 ```
-══════════════════════════════════════════════
+======================================================
   Demo 2: Kafka → Teradata TPT STREAM (ADS-B)
-══════════════════════════════════════════════
+  Broker (host):      localhost:29092
+  Broker (container): kafka:9092
+  Topic:              adsb-positions
+  Mode:               CONTINUOUS (Ctrl+C to stop)
+======================================================
 
 ── 1/3  Clearing TPT and Kafka state from any prior run
-      Delete completed. 0 rows removed.        ← or 100 if re-run
       Topic recreated.
 
-── 2/3  Starting TPT STREAM job (background) then producing messages
-      TPT connects to kafka:9092 inside the demo-net network.
+── 2/3  Starting TPT STREAM job and producer
+      Starting TPT (KAFKA_IDLE_TIMEOUT=30, latency flush -l 5)...
       Waiting 5 seconds for TPT to connect...
+      Starting producer (continuous, 1 s interval, 10 aircraft)...
 
-      Publishing 100 ADS-B messages (10 aircraft × 10 cycles × 1s interval)...
-      [timestamp] 50 ADS-B messages sent to adsb-positions
-      [timestamp] 100 ADS-B messages sent to adsb-positions
-      Producer done. TPT will exit ~15 seconds after the last message.
+  Streaming — press Ctrl+C to stop.
 
-      KAFKA_AXSMOD: Ending due to -rwait 15 timeout
-      TD_INSERTER: Rows Inserted: 100
-      TD_INSERTER: Total Rows in Error Table: 0
-      Job ttuuser completed successfully
+  [12:01:15 UTC]  STATUS rows=80 latest=2026-06-22 12:01:10.443
+  [12:01:25 UTC]  STATUS rows=180 latest=2026-06-22 12:01:20.512
+  [12:01:35 UTC]  STATUS rows=280 latest=2026-06-22 12:01:30.447
+  ...
 
-── 3/3  Verifying rows in adsb_positions
+^C
+── Stopping producer...
+── Waiting for TPT to drain (up to 30 s)...
+   TD_INSERTER: Rows Inserted: 630
+   Job ttuuser completed successfully
+
+── 3/3  Final row count
 
   positions_received   earliest_ts              latest_ts              aircraft_seen
   ------------------   -------------------      -------------------    -------------
-                 100   2026-06-19 12:46:47.621  2026-06-19 12:46:55    10
-
-  icao24  callsign  position_count  avg_altitude_ft
-  ------  --------  --------------  ---------------
-  4073d6  TOM3XT                10  3.69E+004
-  3950f2  AFR674                10  3.80E+004
-  ...
+                 630   2026-06-22 12:01:05.210  2026-06-22 12:02:08    10
 ```
+
+**Bounded mode (`--bounded`):** publishes 100 messages, waits for the 15-second Kafka idle timeout, then exits — same behaviour as the original implementation.
 
 ### How it works
 
@@ -346,26 +357,39 @@ bash demos/02-kafka-tpt-stream/run.sh
    └─ Kafka topic deleted and recreated (clean partition offset)
    └─ TPT checkpoint file cleared (twbrmcp)
 
-2. TPT STREAM job starts (background)
+2. TPT STREAM job starts (background) with -l 5
    └─ DataConnector PRODUCER + Kafka Access Module (libkafkaaxsmod.so)
-   └─ AccessModuleInitStr: -M C (Consumer) -T <topic> -B <broker> -P 0 (partition 0) -W 15 (15s idle timeout)
+   └─ AccessModuleInitStr: -M C (Consumer) -T <topic> -B <broker> -P 0 (partition 0) -W 30 (drain window)
+   └─ tbuild -l 5: latency interval — STREAM operator flushes internal buffers every 5 s
+      ↑ This is the critical flag for continuous streaming.
+      Without -l, flush only happens at end-of-source (when -W idle timeout fires).
+      With a live producer, -W never fires → rows buffer forever → zero rows visible.
+      Reference: Teradata PT Reference Guide 20.00, B035-2436-103K §tbuild.
    └─ Format=DELIMITED, TextDelimiter='|' — parses pipe-separated lines, one Kafka message = one row
 
-3. Python producer sends 100 messages while TPT is connected
-   └─ 10 synthetic aircraft × 10 position updates × 1s interval ≈ 10 seconds
+3. Python producer runs continuously (--continuous)
+   └─ 10 synthetic aircraft, 1 position update per aircraft per second
    └─ Each message: icao24|callsign|lat|lon|alt|vel|hdg|vrate|on_ground|squawk|pos_date|ts\n
    └─ The \n is the DELIMITED record terminator — required so the parser treats each message as one row
 
-4. TPT idle timeout fires (15s after last message)
-   └─ STREAM operator flushes and commits all rows
-   └─ All 100 rows land in adsb_positions in one load phase (4 seconds)
-   └─ Job exits 0
+4. Every 5 seconds: STREAM operator flushes its buffer
+   └─ ~50 rows (10 aircraft × ~5 s × 1 row/s) committed to adsb_positions
+   └─ Rows visible in Teradata immediately after each flush
+   └─ Monitoring loop polls every 10 s: STATUS rows=N latest=TIMESTAMP
+
+5. On Ctrl+C: graceful shutdown
+   └─ Producer killed; no new messages published
+   └─ Kafka Access Module waits up to -W 30 s for the topic to go idle, then signals end-of-stream
+   └─ STREAM operator flushes final buffer and exits
+   └─ verify BTEQ prints the complete final row count
 ```
 
-**Key technical constraints** (discovered during implementation):
+**Key technical constraints:**
 
 | Constraint | Detail |
 |---|---|
+| `tbuild -l <seconds>` is required for continuous streaming | The STREAM operator only commits when it flushes buffers. Without `-l`, that only happens at end-of-source. For a live Kafka topic, end-of-source means the Kafka idle timeout (`-W`) firing — which never happens with a continuous producer. Add `-l 5` to `tbuild` to force periodic flushes. Source: B035-2436-103K |
+| Two different `-W` flags — do not confuse | `tbuild -W <seconds>` is the subprocess spawn timeout (1–900, default 120) — **not** the Kafka idle timeout. The Kafka idle timeout is `-W <seconds>` inside `AccessModuleInitStr`. These are completely different options |
 | `AccessModuleName` / `AccessModuleInitStr` required | Named attributes like `ConnectorName`, `TopicName`, `BootstrapServers` are **not** valid DataConnector attributes — they are silently ignored. The correct API is `AccessModuleName = 'libkafkaaxsmod.so'` with CLI-style `-M C -T -B -P -W` flags |
 | All schema columns must be VARCHAR | `Format='DELIMITED'` requires every schema column to be VARCHAR/CLOB; typed conversion is done via `CAST` in the `APPLY INSERT` |
 | `\n` record terminator required | DELIMITED format uses newlines as record separators; messages without `\n` are concatenated by the access module into one giant "record", causing field overflow |
