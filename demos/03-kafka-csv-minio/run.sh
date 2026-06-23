@@ -127,9 +127,8 @@ PYEOF
   echo "      --fresh: dropping weather_nos_ft and purging all weather_obs rows"
   bteq_run /tpt/scripts/demo03/nos_fresh.bteq
 else
-  # Only drop the FOREIGN TABLE; weather_obs rows from prior hours are preserved
-  echo "      Dropping weather_nos_ft (weather_obs prior-hour rows preserved)"
-  bteq_run /tpt/scripts/demo03/nos_prepare.bteq
+  # Preserve the existing FOREIGN TABLE across runs; create it only if missing.
+  echo "      Preserving weather_nos_ft if it already exists"
 fi
 
 # ── Step 2 ─────────────────────────────────────────────────

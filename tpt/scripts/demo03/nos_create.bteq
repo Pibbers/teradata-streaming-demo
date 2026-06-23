@@ -62,8 +62,13 @@ ORDER BY location;
    JSON/PARQUET and reject the HEADER NVP (error 3706).  For CSV foreign
    tables, omit PARTITION BY and use string WHERE comparisons instead:
      WHERE $var3 = '2026-06-22' AND $var4 = '08' */
-DROP TABLE weather_nos_ft;
 
+/* Create the FOREIGN TABLE only if it does not already exist. */
+HELP TABLE weather_nos_ft;
+.IF ERRORCODE = 3807 THEN .GOTO create_weather_nos_ft
+.GOTO skip_create_weather_nos_ft
+
+.LABEL create_weather_nos_ft
 CREATE MULTISET FOREIGN TABLE weather_nos_ft ,FALLBACK ,
   EXTERNAL SECURITY DEFINER TRUSTED minio_nos_auth
 (
@@ -84,6 +89,8 @@ USING (
   PATHPATTERN ('$var1/$var2/$var3/$var4/$var5')
 )
 NO PRIMARY INDEX;
+
+.LABEL skip_create_weather_nos_ft
 
 /* Sanity check: rows visible across all partitions in this FOREIGN TABLE.
    COUNT(*) includes header rows (HEADER('TRUE') maps column names but does

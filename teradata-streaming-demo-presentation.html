@@ -1,0 +1,2427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Teradata Streaming Demo — Field Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/base16/dracula.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+<style>
+/* ============================================================
+   DESIGN TOKENS
+   ============================================================ */
+:root{
+  /* chrome / ui */
+  --bg:        #12151D;
+  --bg-soft:   #161A24;
+  --surface:   #1A2030;
+  --surface-2: #1E2638;
+  --surface-3: #242D42;
+  --border:    #2B3550;
+  --border-strong: #3D4A6B;
+  --border-soft: #222A3D;
+  --text:      #EDEFF5;
+  --text-dim:  #A4ADC6;
+  --text-faint:#6B7493;
+
+  /* single primary accent (Teradata-adjacent, used for chrome/CTAs/active states) */
+  --primary:   #FF7A30;
+  --primary-soft: #FF7A301a;
+  --primary-dim: #C2611F;
+
+  /* transit-map data colours — one per system in the pipeline; functional, not decorative */
+  --c-producer: #6B7690;
+  --c-kafka:    #FFC15E;
+  --c-tpt:      #9B8CFF;
+  --c-connect:  #E0A23B;
+  --c-minio:    #FF5C7A;
+  --c-flink:    #EC6FAE;
+  --c-hms:      #6E84B0;
+  --c-iceberg:  #4FD1C5;
+  --c-teradata: #FF7A30;
+  --c-ok:       #3DDC84;
+  --c-warn:     #FFC15E;
+
+  /* latency-ladder tiers (Overview / role section) */
+  --lat-1: #E2483D;
+  --lat-2: #FF7A30;
+  --lat-3: #E0A23B;
+  --lat-4: #4FD1C5;
+  --lat-5: #5B6685;
+
+  --font-display: 'Space Grotesk', sans-serif;
+  --font-body: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --radius: 10px;
+  --radius-sm: 6px;
+  --maxw: 1180px;
+}
+
+@media (prefers-reduced-motion: reduce){
+  *{ animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+}
+
+*{ box-sizing: border-box; }
+html{ scroll-behavior: smooth; }
+body{
+  margin:0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+::selection{ background: var(--primary); color: #1A0E04; }
+
+a{ color: inherit; text-decoration: none; }
+
+h1,h2,h3,h4{ font-family: var(--font-display); margin: 0; letter-spacing: -0.01em; }
+
+.eyebrow{
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.eyebrow .dot{ width:6px; height:6px; border-radius:50%; background: var(--primary); flex-shrink:0; }
+
+p{ color: var(--text-dim); margin: 0 0 1em 0; }
+p:last-child{ margin-bottom: 0; }
+
+code{ font-family: var(--font-mono); font-size: 0.9em; }
+
+/* ============================================================
+   LAYOUT SHELL
+   ============================================================ */
+.shell{ display:flex; min-height:100vh; }
+
+.sidenav{
+  width: 256px;
+  flex-shrink: 0;
+  position: fixed;
+  top:0; left:0; bottom:0;
+  border-right: 1px solid var(--border-soft);
+  background: var(--bg-soft);
+  padding: 28px 0 20px;
+  display:flex;
+  flex-direction: column;
+  z-index: 50;
+  overflow-y:auto;
+}
+.sidenav-brand{
+  padding: 0 22px 20px;
+  border-bottom: 1px solid var(--border-soft);
+  margin-bottom: 14px;
+}
+.sidenav-brand .mark{
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--primary);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  display:block;
+}
+.sidenav-brand .title{
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 17px;
+  line-height: 1.25;
+  color: var(--text);
+}
+.navlist{ list-style:none; margin:0; padding: 0 10px; flex:1; }
+.navlist li{ margin: 1px 0; }
+.navlist a{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13.5px;
+  color: var(--text-faint);
+  transition: background .15s, color .15s;
+  font-weight:500;
+}
+.navlist a .navnum{
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  width: 22px;
+  flex-shrink:0;
+}
+.navlist a:hover{ background: var(--surface); color: var(--text); }
+.navlist a.active{ background: var(--surface-2); color: var(--text); }
+.navlist a.active .navnum{ color: var(--primary); }
+.navlist .navgroup-label{
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  padding: 16px 12px 6px;
+}
+.sidenav-foot{
+  padding: 14px 22px 4px;
+  border-top: 1px solid var(--border-soft);
+  margin-top: 10px;
+}
+.sidenav-foot a{
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-faint);
+  display:flex; align-items:center; gap:6px;
+}
+.sidenav-foot a:hover{ color: var(--primary); }
+
+.main{
+  margin-left: 256px;
+  flex: 1;
+  min-width: 0;
+}
+
+.navtoggle{
+  display:none;
+  position: fixed;
+  top: 14px; left: 14px;
+  z-index: 60;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  width: 40px; height: 40px;
+  border-radius: var(--radius-sm);
+  align-items:center; justify-content:center;
+  font-family: var(--font-mono);
+}
+
+@media (max-width: 900px){
+  .sidenav{ transform: translateX(-100%); transition: transform .2s ease; width: 78vw; max-width:300px; }
+  .sidenav.open{ transform: translateX(0); }
+  .main{ margin-left: 0; }
+  .navtoggle{ display:flex; }
+}
+
+section{ padding: 96px 56px; border-bottom: 1px solid var(--border-soft); }
+@media (max-width: 700px){ section{ padding: 64px 22px; } }
+.wrap{ max-width: var(--maxw); margin: 0 auto; }
+
+/* ============================================================
+   SHARED COMPONENTS
+   ============================================================ */
+.tag{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1.5px solid var(--node-c, var(--border-strong));
+  color: var(--text);
+  background: color-mix(in srgb, var(--node-c, var(--border-strong)) 16%, var(--surface));
+  white-space: nowrap;
+}
+.tag .sw{ width:8px; height:8px; border-radius:50%; flex-shrink:0; box-shadow: 0 0 0 2px color-mix(in srgb, var(--node-c) 35%, transparent); }
+
+.grid{ display:grid; gap: 18px; }
+
+.card{
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px;
+}
+
+table{ width:100%; border-collapse: collapse; font-size: 14.5px; }
+th{
+  text-align:left;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  font-weight: 600;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border);
+  white-space:nowrap;
+}
+td{
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border-soft);
+  color: var(--text-dim);
+  vertical-align: top;
+}
+tr:last-child td{ border-bottom:none; }
+td code, td strong{ color: var(--text); }
+.tbl-wrap{
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow-x:auto;
+}
+
+/* code panels */
+.codepanel{
+  background: #0D0F1A;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.codepanel-head{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  padding: 9px 14px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+.codepanel-head .fname{
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.codepanel-tabs{ display:flex; gap:4px; }
+.codepanel-tab{
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-faint);
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.codepanel-tab.active{ background: var(--surface-3); color: var(--text); border-color: var(--border); }
+.codepanel pre{ margin:0; padding: 16px 18px; overflow-x:auto; font-size: 13px; line-height:1.55; }
+.codepanel pre code{ font-family: var(--font-mono) !important; background:transparent !important; }
+.codepanel-body{ position:relative; }
+.code-view{ display:none; }
+.code-view.active{ display:block; }
+
+/* terminal panel */
+.terminal{
+  background: #0D0F1A;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow:hidden;
+}
+.terminal-head{
+  display:flex; align-items:center; gap:8px;
+  padding: 10px 14px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+.terminal-head .dot{ width:10px; height:10px; border-radius:50%; }
+.terminal-head .label{
+  margin-left: 8px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+.terminal pre{
+  margin:0; padding: 16px 18px;
+  font-family: var(--font-mono);
+  font-size: 12.8px;
+  line-height: 1.65;
+  color: #C7CCDA;
+  overflow-x:auto;
+  white-space: pre;
+}
+.term-ok{ color: var(--c-ok); }
+.term-warn{ color: var(--c-warn); }
+.term-dim{ color: var(--text-faint); }
+.term-hl{ color: var(--primary); }
+.term-head2{ color: #fff; font-weight:600;}
+
+/* pipeline rail (signature element) */
+.rail{
+  display:flex;
+  align-items:center;
+  gap: 0;
+  margin: 22px 0 8px;
+  overflow-x:auto;
+  padding-bottom: 6px;
+}
+.rail-node{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 2px solid var(--node-c, var(--border-strong));
+  background: color-mix(in srgb, var(--node-c, var(--border-strong)) 20%, var(--surface));
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 12.5px;
+  color: var(--text);
+  white-space: nowrap;
+  flex-shrink:0;
+}
+.rail-node .sw{ width:8px; height:8px; border-radius:50%; background: var(--node-c); flex-shrink:0; box-shadow: 0 0 0 2px color-mix(in srgb, var(--node-c) 35%, transparent); }
+.rail-arrow{
+  width: 30px; height:3px; flex-shrink:0;
+  background: repeating-linear-gradient(to right, var(--border-strong) 0 7px, transparent 7px 12px);
+  position: relative;
+  margin: 0 3px;
+}
+.rail-arrow::after{
+  content:'';
+  position:absolute; right:-1px; top:-3.5px;
+  border: 5px solid transparent;
+  border-left-color: var(--border-strong);
+}
+
+/* section heading block */
+.sec-head{ margin-bottom: 40px; max-width: 760px; }
+.sec-head h2{ font-size: 34px; margin-top:10px; }
+.sec-head .sub{ font-size: 16.5px; color: var(--text-dim); margin-top: 10px; }
+@media (max-width:700px){ .sec-head h2{ font-size:26px; } }
+
+.demo-id{
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--bg);
+  background: var(--primary);
+  padding: 3px 11px;
+  border-radius: 999px;
+  letter-spacing: 0.03em;
+}
+
+.subhead{
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--primary);
+  margin: 0 0 14px;
+  display:flex; align-items:center; gap:8px;
+}
+.subhead::before{ content:''; width:16px; height:1.5px; background: var(--primary); display:inline-block; }
+
+ul.bullets{ list-style:none; margin:0; padding:0; display:grid; gap:12px; }
+ul.bullets li{
+  position:relative;
+  padding-left: 22px;
+  color: var(--text-dim);
+  font-size: 15px;
+}
+ul.bullets li::before{
+  content:'';
+  position:absolute; left:0; top:9px;
+  width:7px; height:7px;
+  border-radius:1px;
+  background: var(--primary);
+}
+ul.bullets li strong{ color: var(--text); }
+
+.cols2{ display:grid; grid-template-columns: 1fr 1fr; gap:22px; }
+.cols3{ display:grid; grid-template-columns: repeat(3,1fr); gap:18px; }
+@media (max-width: 860px){ .cols2,.cols3{ grid-template-columns: 1fr; } }
+
+.note{
+  border-left: 3px solid var(--node-c, var(--primary));
+  background: color-mix(in srgb, var(--node-c, var(--primary)) 8%, var(--surface));
+  border-radius: 0 var(--radius) var(--radius) 0;
+  padding: 14px 18px;
+  font-size: 14px;
+  color: var(--text-dim);
+}
+.note strong{ color: var(--text); }
+
+.kicker-num{ font-family: var(--font-mono); color: var(--text-faint); font-size:12px; }
+
+.btn{
+  display:inline-flex; align-items:center; gap:8px;
+  font-family: var(--font-mono); font-size:13px;
+  padding: 10px 18px;
+  border-radius: var(--radius-sm);
+  background: var(--primary);
+  color: #1A0E04;
+  font-weight:600;
+  border:none;
+  cursor:pointer;
+}
+.btn.ghost{ background:transparent; border:1px solid var(--border); color:var(--text); }
+
+::-webkit-scrollbar{ height:8px; width:8px; }
+::-webkit-scrollbar-thumb{ background: var(--border); border-radius:4px; }
+::-webkit-scrollbar-track{ background:transparent; }
+
+.flow-svg text{ font-family: var(--font-mono); fill: var(--text); }
+.flow-svg .lbl{ font-size: 12px; font-weight:600; fill: var(--text); }
+.flow-svg .sub{ font-size: 10px; fill: var(--text-dim); }
+.flow-edge{ fill:none; stroke: var(--border-strong); stroke-width:2.1; }
+.flow-edge.active{ stroke: var(--primary); stroke-width:2.3; stroke-dasharray: 6 4; animation: dash 1.6s linear infinite; }
+@keyframes dash{ to{ stroke-dashoffset: -40; } }
+.flow-node rect{ fill: var(--surface-2); stroke: var(--border-strong); stroke-width:2; rx:8; }
+.flow-node.hl rect{ stroke-width:2.4; }
+
+/* step / "how it works" timeline */
+.steps{ position:relative; margin: 6px 0 0; padding-left: 38px; }
+.steps::before{
+  content:'';
+  position:absolute; left:13px; top:6px; bottom:6px;
+  width:1.5px; background: var(--border);
+}
+.step{ position:relative; padding-bottom: 26px; }
+.step:last-child{ padding-bottom:0; }
+.step-num{
+  position:absolute; left:-38px; top:0;
+  width:28px; height:28px; border-radius:50%;
+  background: var(--surface-2); border:1.5px solid var(--node-c, var(--primary));
+  display:flex; align-items:center; justify-content:center;
+  font-family: var(--font-mono); font-size:12px; color: var(--text);
+  z-index:1;
+}
+.step h4{ font-size:15px; color:var(--text); margin-bottom:4px; }
+.step p{ font-size:14px; margin-bottom:0; }
+.step .mini{ font-family: var(--font-mono); font-size:12.5px; color:var(--text-faint); display:block; margin-top:4px; }
+
+.compare-hl td:nth-child(2){ background: color-mix(in srgb, var(--c-tpt) 7%, transparent); }
+.compare-hl td:nth-child(3){ background: color-mix(in srgb, var(--primary) 7%, transparent); }
+
+.ladder{ margin-top: 8px; }
+.ladder-row{ display:flex; align-items:center; gap:18px; margin-bottom:13px; }
+.ladder-label{ width:172px; flex-shrink:0; font-family:var(--font-display); font-weight:600; font-size:14.5px; text-align:right; color:var(--text); }
+.ladder-track{ flex:1; background:var(--surface-3); border-radius:8px; height:40px; position:relative; overflow:hidden; border:1px solid var(--border); }
+.ladder-fill{ height:100%; display:flex; align-items:center; padding-left:14px; font-family:var(--font-mono); font-weight:700; font-size:13px; border-radius:8px 0 0 8px; white-space:nowrap; }
+.ladder-mech{ width:240px; flex-shrink:0; font-family:var(--font-mono); font-size:12px; color:var(--text-dim); }
+@media (max-width:860px){
+  .ladder-row{ flex-wrap:wrap; }
+  .ladder-label{ width:auto; text-align:left; }
+  .ladder-track{ width:100%; order:3; flex-basis:100%; }
+  .ladder-mech{ width:auto; }
+}
+
+footer.site{
+  padding: 56px 56px 64px;
+  text-align:center;
+}
+footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--text-faint); }
+</style>
+</head>
+<body>
+
+<button class="navtoggle" id="navToggle">☰</button>
+
+<div class="shell">
+  <nav class="sidenav" id="sidenav">
+    <div class="sidenav-brand">
+      <span class="mark">FIELD GUIDE</span>
+      <span class="title">Teradata Streaming Demo</span>
+    </div>
+    <ul class="navlist">
+      <li><a href="#hero" data-nav><span class="navnum">—</span>Overview</a></li>
+      <li><a href="#role" data-nav><span class="navnum">⇄</span>Teradata's role</a></li>
+      <li><a href="#architecture" data-nav><span class="navnum">∞</span>Infrastructure</a></li>
+      <li class="navgroup-label">Demo topics</li>
+      <li><a href="#demo01" data-nav><span class="navnum">01</span>Avro BLOB · BTEQ</a></li>
+      <li><a href="#demo01a" data-nav><span class="navnum">01A</span>Avro BLOB · TPT</a></li>
+      <li><a href="#demo02" data-nav><span class="navnum">02</span>Kafka → TPT Stream</a></li>
+      <li><a href="#demo03" data-nav><span class="navnum">03</span>Kafka → NOS</a></li>
+      <li><a href="#demo04" data-nav><span class="navnum">04</span>Flink → Iceberg → OTF</a></li>
+      <li><a href="#demo05" data-nav><span class="navnum">05</span>Flink Lookup Enrich</a></li>
+      <li><a href="#compare" data-nav><span class="navnum">—</span>Compare &amp; choose</a></li>
+    </ul>
+    <div class="sidenav-foot">
+      <a href="#hero">teradata-streaming-demo /</a>
+    </div>
+  </nav>
+
+  <div class="main">
+  <section id="hero" style="padding-top:84px;">
+  <div class="wrap">
+    <div class="eyebrow"><span class="dot"></span>TERADATA STREAMING DEMO &nbsp;·&nbsp; FIELD GUIDE</div>
+    <h1 style="font-size:50px; line-height:1.08; margin-top:18px; max-width:880px;">
+      From Kafka to Vantage, <span style="color:var(--primary);">six different ways.</span>
+    </h1>
+    <p style="font-size:17.5px; max-width:680px; margin-top:18px;">
+      A hands-on tour of Teradata's real-time and near-real-time ingestion paths —
+      Avro BLOBs, TPT&nbsp;STREAM, Kafka Connect, Apache Flink, Native Object Store, and
+      Open Table Format — running on a docker-compose stack you bring up on a laptop and
+      point at a real Teradata instance. Every demo here is <code>bash demos/&lt;name&gt;/run.sh</code>
+      away from a row landing in Vantage.
+    </p>
+
+    <div style="display:flex; gap:12px; margin-top:30px; flex-wrap:wrap;">
+      <a href="#architecture" class="btn">See the infrastructure ↓</a>
+      <a href="#demo01" class="btn ghost">Jump to Demo 01 →</a>
+    </div>
+
+    <!-- pipeline legend / transit-map key -->
+    <div class="subhead" style="margin-top:56px;">The pipeline — system key</div>
+    <div style="display:flex; flex-wrap:wrap; gap:10px;">
+      <span class="tag" style="--node-c:var(--c-producer);"><span class="sw" style="background:var(--c-producer)"></span>Python producer</span>
+      <span class="tag" style="--node-c:var(--c-kafka);"><span class="sw" style="background:var(--c-kafka)"></span>Apache Kafka</span>
+      <span class="tag" style="--node-c:var(--c-tpt);"><span class="sw" style="background:var(--c-tpt)"></span>TPT / BTEQ</span>
+      <span class="tag" style="--node-c:var(--c-connect);"><span class="sw" style="background:var(--c-connect)"></span>Kafka Connect</span>
+      <span class="tag" style="--node-c:var(--c-minio);"><span class="sw" style="background:var(--c-minio)"></span>MinIO (S3)</span>
+      <span class="tag" style="--node-c:var(--c-flink);"><span class="sw" style="background:var(--c-flink)"></span>Apache Flink</span>
+      <span class="tag" style="--node-c:var(--c-hms);"><span class="sw" style="background:var(--c-hms)"></span>Hive Metastore</span>
+      <span class="tag" style="--node-c:var(--c-iceberg);"><span class="sw" style="background:var(--c-iceberg)"></span>Apache Iceberg</span>
+      <span class="tag" style="--node-c:var(--c-teradata);"><span class="sw" style="background:var(--c-teradata)"></span>Teradata Vantage</span>
+    </div>
+    <p style="font-size:13px; margin-top:10px; color:var(--text-faint);">
+      Every diagram in this guide reuses these colours node-for-node — like a transit map, the
+      colour tells you which system you're looking at before you read the label.
+    </p>
+
+    <!-- demo catalog -->
+    <div class="subhead" style="margin-top:56px;">The six demos</div>
+    <div class="grid cols3" style="grid-template-columns: repeat(3,1fr);">
+
+      <a href="#demo01" class="card" style="--node-c:var(--c-tpt); display:block;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span class="demo-id">01</span>
+          <span class="tag" style="border-color:transparent; padding:0;">BTEQ</span>
+        </div>
+        <h3 style="font-size:17px; margin-top:14px;">Avro BLOB → DATASET</h3>
+        <p style="font-size:13.5px; margin-top:8px;">Avro container files staged as BLOBs, split into <code>DATASET AVRO</code> rows. Schema evolution, no ETL rewrite.</p>
+      </a>
+
+      <a href="#demo01a" class="card" style="--node-c:var(--c-tpt); display:block;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span class="demo-id">01A</span>
+          <span class="tag" style="border-color:transparent; padding:0;">TPT STREAM</span>
+        </div>
+        <h3 style="font-size:17px; margin-top:14px;">Avro BLOB → DATASET, the TPT way</h3>
+        <p style="font-size:13.5px; margin-top:8px;">Same result as Demo&nbsp;01, but loaded by a single restartable TPT job instead of two BTEQ sessions.</p>
+      </a>
+
+      <a href="#demo02" class="card" style="--node-c:var(--c-kafka); display:block;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span class="demo-id">02</span>
+          <span class="tag" style="border-color:transparent; padding:0;">TPT STREAM</span>
+        </div>
+        <h3 style="font-size:17px; margin-top:14px;">Kafka → TPT STREAM</h3>
+        <p style="font-size:13.5px; margin-top:8px;">Live ADS-B feed landing in Teradata every ~5 seconds via the Kafka Access Module.</p>
+      </a>
+
+      <a href="#demo03" class="card" style="--node-c:var(--c-minio); display:block;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span class="demo-id">03</span>
+          <span class="tag" style="border-color:transparent; padding:0;">NOS</span>
+        </div>
+        <h3 style="font-size:17px; margin-top:14px;">Kafka Connect → MinIO → NOS</h3>
+        <p style="font-size:13.5px; margin-top:8px;">CSV batches land in object storage; Native Object Store reads them with partition-pruned <code>PATHPATTERN</code>.</p>
+      </a>
+
+      <a href="#demo04" class="card" style="--node-c:var(--c-iceberg); display:block;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span class="demo-id">04</span>
+          <span class="tag" style="border-color:transparent; padding:0;">OTF</span>
+        </div>
+        <h3 style="font-size:17px; margin-top:14px;">Kafka → Flink → Iceberg → OTF</h3>
+        <p style="font-size:13.5px; margin-top:8px;">Flink commits a new Iceberg snapshot every checkpoint; Teradata queries it live via <code>DATALAKE</code>. No ETL.</p>
+      </a>
+
+      <a href="#demo05" class="card" style="--node-c:var(--c-flink); display:block;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span class="demo-id">05</span>
+          <span class="tag" style="border-color:transparent; padding:0;">Lookup Join</span>
+        </div>
+        <h3 style="font-size:17px; margin-top:14px;">Flink Lookup Join ← Teradata</h3>
+        <p style="font-size:13.5px; margin-top:8px;">Reverses the flow: Flink enriches each Kafka message by querying Teradata reference data in-flight.</p>
+      </a>
+
+    </div>
+  </div>
+</section>
+<section id="role">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="subhead">Where Teradata fits</div>
+      <h2>Teradata isn't another streaming engine — it's the analytical layer underneath one.</h2>
+      <p class="sub">Teradata does not compete with Apache Kafka, Apache Flink, or any message broker. It is the
+      enterprise SQL, governance, and historical-context layer that sits over streaming data — and it connects
+      to a live Kafka topic through two integration paths that typically run in parallel.</p>
+    </div>
+
+    <div class="card" style="padding:24px 24px 16px; overflow-x:auto;">
+      <svg class="flow-svg" viewBox="0 0 970 250" style="width:100%; min-width:760px; height:auto;">
+              <defs>
+        <marker id="arrow-role" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--border-strong)"></path>
+        </marker>
+        <marker id="arrowHl-role" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--primary)"></path>
+        </marker>
+      </defs>
+      <g class="flow-node">
+        <rect x="20" y="95" width="150" height="50" style="stroke:var(--c-kafka)"></rect>
+        <text x="95.0" y="117.0" text-anchor="middle" class="lbl">Kafka topic</text>
+        <text x="95.0" y="133.0" text-anchor="middle" class="sub">the single source event log</text>
+      </g>
+      <path class="flow-edge" d="M170,120 L200,120 L200,45 L230,45" marker-end="url(#arrow-role)"></path>
+      <path class="flow-edge" d="M170,120 L200,120 L200,195 L230,195" marker-end="url(#arrow-role)"></path>
+      <g class="flow-node">
+        <rect x="230" y="20" width="220" height="50" style="stroke:var(--c-tpt)"></rect>
+        <text x="340.0" y="42.0" text-anchor="middle" class="lbl">TPT — direct ingest</text>
+        <text x="340.0" y="58.0" text-anchor="middle" class="sub">Access Module · STREAM</text>
+      </g>
+      <g class="flow-node">
+        <rect x="230" y="170" width="220" height="50" style="stroke:var(--c-flink)"></rect>
+        <text x="340.0" y="192.0" text-anchor="middle" class="lbl">Flink / Kafka Connect</text>
+        <text x="340.0" y="208.0" text-anchor="middle" class="sub">transform · sink</text>
+      </g>
+      <path class="flow-edge" d="M480,195 L520,195" marker-end="url(#arrow-role)"></path>
+      <g class="flow-node">
+        <rect x="520" y="170" width="210" height="50" style="stroke:var(--c-iceberg)"></rect>
+        <text x="625.0" y="192.0" text-anchor="middle" class="lbl">Object storage</text>
+        <text x="625.0" y="208.0" text-anchor="middle" class="sub">Iceberg / raw files</text>
+      </g>
+      <path class="flow-edge active" d="M450,45 L730,45" marker-end="url(#arrowHl-role)"></path>
+      <path class="flow-edge active" d="M730,195 L760,195 L760,140" marker-end="url(#arrowHl-role)"></path>
+      <text x="470" y="36" text-anchor="start" class="sub" fill="var(--c-tpt)">HOT PATH</text>
+      <text x="545" y="162" text-anchor="start" class="sub" fill="var(--c-flink)">COLD PATH</text>
+      <rect x="760" y="10" width="190" height="230" rx="12" style="fill:var(--surface-3); stroke:var(--c-teradata); stroke-width:2.4;"></rect>
+      <text x="855" y="105" text-anchor="middle" class="lbl">Teradata</text>
+      <text x="855" y="124" text-anchor="middle" class="lbl">Vantage</text>
+      <text x="855" y="150" text-anchor="middle" class="sub">BFS · NOS · OTF</text>
+      <text x="855" y="165" text-anchor="middle" class="sub">hot + cold,</text>
+      <text x="855" y="178" text-anchor="middle" class="sub">in parallel</text>
+            </svg>
+    </div>
+
+    <div class="cols2" style="margin-top:22px;">
+      <div class="note" style="--node-c:var(--c-tpt);">
+        <strong>Hot path — events land in Teradata directly.</strong> TPT's Kafka Access Module and STREAM
+        operator write straight into Teradata block storage (BFS). Latency is bounded by the flush interval —
+        this is Demo&nbsp;02's path, and the one to reach for when a dashboard or operational query needs
+        sub-5-second freshness.
+      </div>
+      <div class="note" style="--node-c:var(--c-flink);">
+        <strong>Cold path — events land in object storage first.</strong> Flink or Kafka Connect write to
+        Iceberg or raw files on object storage; Teradata queries that data live through OTF or NOS, with no
+        copy step. This is the path Demos&nbsp;03–05 build, and the default for shared, governed data products.
+      </div>
+    </div>
+
+    <div class="subhead" style="margin-top:52px;">Matching latency to the right approach</div>
+    <p style="max-width:760px;">"Real-time" is not a single requirement — the business latency SLA determines
+    the technology, not the other way around. Five tiers cover the full range, from sub-millisecond event
+    processing to bulk archival:</p>
+
+    <div class="ladder">
+      <div class="ladder-row">
+        <div class="ladder-label">True Real-Time</div>
+        <div class="ladder-track"><div class="ladder-fill" style="width:94%; background:var(--lat-1); color:var(--bg);">µs – 200ms</div></div>
+        <div class="ladder-mech">TPT Stream (continuous)</div>
+      </div>
+      <div class="ladder-row">
+        <div class="ladder-label">Near Real-Time</div>
+        <div class="ladder-track"><div class="ladder-fill" style="width:76%; background:var(--lat-2); color:var(--bg);">200ms – 5s</div></div>
+        <div class="ladder-mech">TPT Stream micro-batch / OTF</div>
+      </div>
+      <div class="ladder-row">
+        <div class="ladder-label">High-Freq Micro-Batch</div>
+        <div class="ladder-track"><div class="ladder-fill" style="width:58%; background:var(--lat-3); color:var(--bg);">5s – 5min</div></div>
+        <div class="ladder-mech">TPT Update</div>
+      </div>
+      <div class="ladder-row">
+        <div class="ladder-label">Micro-Batch</div>
+        <div class="ladder-track"><div class="ladder-fill" style="width:40%; background:var(--lat-4); color:var(--bg);">5min+</div></div>
+        <div class="ladder-mech">Flink → Iceberg → OTF</div>
+      </div>
+      <div class="ladder-row">
+        <div class="ladder-label">Bulk / Delayed</div>
+        <div class="ladder-track"><div class="ladder-fill" style="width:22%; background:var(--lat-5); color:#fff;">Hours+</div></div>
+        <div class="ladder-mech">NOS (raw) / OTF (Iceberg bulk)</div>
+      </div>
+    </div>
+    <p style="font-size:13px; color:var(--text-faint); margin-top:6px;">
+      Demos 02, 04, and 05 in this guide all run in the near-real-time-to-high-frequency-microbatch band
+      (5–30 second end-to-end latency); Demo 03 runs as a high-frequency microbatch on a 5-minute Kafka Connect
+      flush. Demos 01 and 01A are bulk file loads and sit outside the streaming ladder entirely.
+    </p>
+
+    <div class="subhead" style="margin-top:52px;">Three ways in</div>
+    <div class="grid cols3">
+      <div class="card" style="--node-c:var(--c-tpt);">
+        <span class="tag" style="--node-c:var(--c-tpt);"><span class="sw" style="background:var(--c-tpt)"></span>TPT</span>
+        <h4 style="margin-top:12px; font-size:16px;">The streaming workhorse</h4>
+        <p style="font-size:13.5px; margin-top:8px;">The highest-throughput path into Teradata. Five tuning levers govern it in production:</p>
+        <ul class="bullets" style="margin-top:10px; gap:8px;">
+          <li style="font-size:13px;"><strong>MaxSessions = AMP count</strong> — the primary throughput lever; each session maps to a parallel AMP thread.</li>
+          <li style="font-size:13px;"><strong>Format:</strong> CSV is fastest; JSON needs pre-shredding; Avro/Protobuf must be decoded upstream (Flink pre-processor).</li>
+          <li style="font-size:13px;"><strong>BufferCapacity:</strong> raise from the 64KB default to 1–4MB for high-throughput ingest.</li>
+          <li style="font-size:13px;"><strong>ErrorLimit &gt; 0</strong> in production — at 0, one bad message halts the entire job.</li>
+          <li style="font-size:13px;"><strong>TASM:</strong> a dedicated HIGH-priority workload tier keeps ingest sessions from being preempted.</li>
+        </ul>
+      </div>
+
+      <div class="card" style="--node-c:var(--c-connect);">
+        <span class="tag" style="--node-c:var(--c-connect);"><span class="sw" style="background:var(--c-connect)"></span>Kafka Connect</span>
+        <h4 style="margin-top:12px; font-size:16px;">The managed alternative</h4>
+        <p style="font-size:13.5px; margin-top:8px;">The Teradata Sink Connector — declarative, schema-aware, no TPT job scripts:</p>
+        <ul class="bullets" style="margin-top:10px; gap:8px;">
+          <li style="font-size:13px; color:var(--c-ok);">Schema-aware via Schema Registry (Avro/Protobuf) — no custom deserialisation code.</li>
+          <li style="font-size:13px; color:var(--c-ok);">Auto-creates tables from the Kafka topic schema.</li>
+          <li style="font-size:13px; color:var(--c-ok);">Offset management and fault tolerance built in.</li>
+          <li style="font-size:13px; color:var(--c-warn);">Not built for extreme throughput (1B+ msg/hr) — that's TPT's job.</li>
+          <li style="font-size:13px; color:var(--c-warn);">Auto-evolution is limited: type changes and column removal aren't supported.</li>
+        </ul>
+      </div>
+
+      <div class="card" style="--node-c:var(--c-flink);">
+        <span class="tag" style="--node-c:var(--c-flink);"><span class="sw" style="background:var(--c-flink)"></span>Apache Flink</span>
+        <h4 style="margin-top:12px; font-size:16px;">Three integration roles</h4>
+        <p style="font-size:13.5px; margin-top:8px;">Flink 2.0 is the de facto stream processing engine. It meets Teradata three distinct ways:</p>
+        <ul class="bullets" style="margin-top:10px; gap:8px;">
+          <li style="font-size:13px;"><strong>JDBC Lookup Enrichment</strong> — real-time lookup joins against Teradata reference data (Demo&nbsp;05).</li>
+          <li style="font-size:13px;"><strong>Iceberg Writer → OTF</strong> — Flink transforms and writes Iceberg; Teradata queries it live (Demo&nbsp;04).</li>
+          <li style="font-size:13px;"><strong>Avro/Protobuf pre-processor</strong> — decodes binary formats TPT can't read natively, republishing as JSON/CSV for TPT to ingest.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="subhead" style="margin-top:52px;">Production design patterns</div>
+    <p style="max-width:760px;">Three patterns account for most enterprise streaming deployments built on Teradata.
+    The mixed pattern — hot and cold paths running in parallel off the same topic — is the most common in
+    production.</p>
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>Pattern</th><th>Flow</th><th>Best for</th><th>Reference benchmark</th></tr>
+        <tr>
+          <td><strong>1 · Event Processing &amp; Enrichment</strong></td>
+          <td>Kafka → Flink → <span style="color:var(--text);">Teradata JDBC lookup</span> → enriched stream → consumers</td>
+          <td>Fraud detection, next-best-offer, anomaly detection</td>
+          <td>Global bank: <strong style="color:var(--c-ok);">37 hrs → 12 min</strong> fraud detection</td>
+        </tr>
+        <tr>
+          <td><strong>2 · Real-Time Dashboard</strong></td>
+          <td>Kafka → TPT Stream → Teradata tables → BI tools (live)</td>
+          <td>Logistics tracking, NOC monitoring, financial dashboards</td>
+          <td><strong style="color:var(--c-ok);">2.5M+ queries/day</strong> concurrent with live ingest</td>
+        </tr>
+        <tr>
+          <td><strong>3 · Mixed / Mini-Batch</strong> <span style="color:var(--text-faint); font-size:11.5px;">(most common)</span></td>
+          <td>Kafka → TPT (staging) → mini-batch ETL <em>and</em> Kafka → Flink → Iceberg → OTF, in parallel</td>
+          <td>Decoupled hot + cold paths; the majority of enterprise streaming estates</td>
+          <td>DHL: <strong style="color:var(--c-ok);">500M msg/day</strong>; European retailer EPOS streaming</td>
+        </tr>
+      </table>
+    </div>
+    <p style="font-size:13px; color:var(--text-faint); margin-top:10px;">
+      This guide's six demos are smaller-scale instances of the same three patterns: Demo&nbsp;05 is Pattern&nbsp;1,
+      Demo&nbsp;02 is Pattern&nbsp;2, and Demos&nbsp;03–04 together are Pattern&nbsp;3's cold path.
+    </p>
+
+  </div>
+</section>
+<section id="architecture">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="subhead">Infrastructure</div>
+      <h2>One docker-compose stack, one external Teradata.</h2>
+      <p class="sub">Everything except Teradata itself runs in containers on <code>demo-net</code>. Teradata stays
+      external — on-prem, VantageCloud, or a reachable VM — because that's how every real deployment looks too.</p>
+    </div>
+
+    <div class="card" style="padding:28px 28px 18px; overflow-x:auto;">
+      <svg class="flow-svg" viewBox="0 0 1180 440" style="width:100%; min-width:880px; height:auto;">
+        <defs>
+          <marker id="arrow-arch" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--border-strong)"></path>
+          </marker>
+          <marker id="arrowHl-arch" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--primary)"></path>
+          </marker>
+        </defs>
+
+        <!-- compose network boundary -->
+        <rect x="218" y="12" width="734" height="404" rx="14" fill="none" stroke="var(--border-strong)" stroke-width="1.6" stroke-dasharray="3 5"></rect>
+        <text x="234" y="34" class="sub" style="font-size:10.5px; letter-spacing:.08em;">DOCKER COMPOSE · demo-net</text>
+
+        <!-- teradata external boundary -->
+        <rect x="978" y="38" width="172" height="362" rx="14" fill="none" stroke="var(--c-teradata)" stroke-width="1.2" stroke-dasharray="2 5" opacity="0.6"></rect>
+
+        <!-- edges (drawn first, under nodes) -->
+        <path class="flow-edge" d="M180,215 L250,215" marker-end="url(#arrow-arch)"></path>
+        <path class="flow-edge" d="M400,215 L400,65 L470,65" marker-end="url(#arrow-arch)"></path>
+        <path class="flow-edge" d="M400,215 L470,215" marker-end="url(#arrow-arch)"></path>
+        <path class="flow-edge" d="M400,215 L400,365 L470,365" marker-end="url(#arrow-arch)"></path>
+        <path class="flow-edge active" d="M650,65 L980,65" marker-end="url(#arrowHl-arch)"></path>
+        <path class="flow-edge" d="M650,215 L740,215" marker-end="url(#arrow-arch)"></path>
+        <path class="flow-edge" d="M650,355 C 700,340 700,235 740,222" marker-end="url(#arrow-arch)"></path>
+        <path class="flow-edge" d="M650,378 L740,378" marker-end="url(#arrow-arch)"></path>
+        <path class="flow-edge active" d="M900,215 L980,215" marker-end="url(#arrowHl-arch)"></path>
+        <path class="flow-edge active" d="M900,378 L980,205" marker-end="url(#arrowHl-arch)"></path>
+
+        <!-- edge labels -->
+        <text x="408" y="58" class="sub">publish</text>
+        <text x="660" y="58" class="lbl" fill="var(--c-tpt)">BTEQ / tbuild load</text>
+        <text x="660" y="208" class="sub">S3 Sink</text>
+        <text x="905" y="208" class="lbl" fill="var(--c-minio)">NOS read</text>
+        <text x="660" y="372" class="sub">Parquet write</text>
+        <text x="660" y="395" class="sub">catalog (Thrift :9083)</text>
+        <text x="905" y="395" class="lbl" fill="var(--c-iceberg)">OTF / DATALAKE</text>
+
+        <!-- nodes -->
+        <g class="flow-node">
+          <rect x="30" y="190" width="150" height="50" style="stroke:var(--c-producer)"></rect>
+          <text x="105" y="211" text-anchor="middle" class="lbl">Python producers</text>
+          <text x="105" y="227" text-anchor="middle" class="sub">adsb · weather · avro</text>
+        </g>
+
+        <g class="flow-node">
+          <rect x="250" y="190" width="150" height="50" style="stroke:var(--c-kafka)"></rect>
+          <text x="325" y="211" text-anchor="middle" class="lbl">Apache Kafka</text>
+          <text x="325" y="227" text-anchor="middle" class="sub">KRaft · :29092</text>
+        </g>
+
+        <g class="flow-node">
+          <rect x="470" y="40" width="180" height="50" style="stroke:var(--c-tpt)"></rect>
+          <text x="560" y="61" text-anchor="middle" class="lbl">TPT container</text>
+          <text x="560" y="77" text-anchor="middle" class="sub">BTEQ · tbuild · Kafka AxsMod</text>
+        </g>
+
+        <g class="flow-node">
+          <rect x="470" y="190" width="180" height="50" style="stroke:var(--c-connect)"></rect>
+          <text x="560" y="211" text-anchor="middle" class="lbl">Kafka Connect</text>
+          <text x="560" y="227" text-anchor="middle" class="sub">S3 Sink connector · :8083</text>
+        </g>
+
+        <g class="flow-node">
+          <rect x="470" y="353" width="180" height="50" style="stroke:var(--c-flink)"></rect>
+          <text x="560" y="374" text-anchor="middle" class="lbl">Flink</text>
+          <text x="560" y="390" text-anchor="middle" class="sub">JobManager + TaskManager · :8081</text>
+        </g>
+
+        <g class="flow-node">
+          <rect x="740" y="190" width="160" height="50" style="stroke:var(--c-minio)"></rect>
+          <text x="820" y="211" text-anchor="middle" class="lbl">MinIO</text>
+          <text x="820" y="227" text-anchor="middle" class="sub">S3-compatible · :9000 / :9001</text>
+        </g>
+
+        <g class="flow-node">
+          <rect x="740" y="353" width="160" height="50" style="stroke:var(--c-hms)"></rect>
+          <text x="820" y="374" text-anchor="middle" class="lbl">Hive Metastore</text>
+          <text x="820" y="390" text-anchor="middle" class="sub">+ MySQL · Thrift :9083</text>
+        </g>
+
+        <g class="flow-node hl">
+          <rect x="978" y="160" width="172" height="120" style="stroke:var(--c-teradata); fill:var(--surface-3);"></rect>
+          <text x="1064" y="208" text-anchor="middle" class="lbl" style="font-size:13px;">Teradata</text>
+          <text x="1064" y="226" text-anchor="middle" class="lbl" style="font-size:13px;">Vantage</text>
+          <text x="1064" y="252" text-anchor="middle" class="sub">external — on-prem,</text>
+          <text x="1064" y="266" text-anchor="middle" class="sub">VantageCloud, or a VM</text>
+        </g>
+      </svg>
+    </div>
+
+    <div class="cols2" style="margin-top:36px;">
+      <div>
+        <div class="subhead">Prerequisites</div>
+        <div class="tbl-wrap">
+          <table>
+            <tr><th>Requirement</th><th>Notes</th></tr>
+            <tr><td>Docker Desktop / Engine 24+</td><td>With Compose v2 (<code>docker compose</code>)</td></tr>
+            <tr><td>Python 3.9+</td><td><code>pip install confluent-kafka fastavro boto3</code></td></tr>
+            <tr><td>Teradata instance</td><td>Vantage 20.x recommended; <code>dbc</code> user with CREATE DATABASE rights</td></tr>
+            <tr><td><code>teradata/tpt:latest</code></td><td>Requires Teradata Developer registration</td></tr>
+          </table>
+        </div>
+      </div>
+      <div>
+        <div class="subhead">Service ports (host-facing)</div>
+        <div class="tbl-wrap">
+          <table>
+            <tr><th>Service</th><th>Port</th><th>Notes</th></tr>
+            <tr><td>Kafka</td><td><code>29092</code></td><td>External listener</td></tr>
+            <tr><td>MinIO API</td><td><code>9000</code></td><td>S3-compatible endpoint</td></tr>
+            <tr><td>MinIO Console</td><td><code>9001</code></td><td>Web UI</td></tr>
+            <tr><td>Flink JobManager</td><td><code>8081</code></td><td>REST API + Web UI</td></tr>
+            <tr><td>Hive Metastore</td><td><code>9083</code></td><td>Thrift protocol</td></tr>
+            <tr><td>Kafka Connect</td><td><code>8083</code></td><td>REST API</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="subhead" style="margin-top:36px;">Quick start</div>
+    <div class="codepanel">
+      <div class="codepanel-head"><span class="fname">terminal</span></div>
+      <div class="codepanel-body"><pre><code class="language-bash">cp .env.example .env
+# Edit .env: set TD_HOST, TD_USER, TD_PASSWORD, HOST_IP, KAFKA_CLUSTER_ID
+
+docker build -t td-demo-kafka-connect:latest kafka-connect/
+docker build -t flink-demo:latest flink/
+docker compose up -d
+
+docker compose exec -T tpt bash /tpt/scripts/run_setup.sh
+
+# Then run any demo:
+bash demos/01-avro-blob/run.sh
+bash demos/01a-avro-blob-tpt/run.sh     # same result, TPT loader instead of BTEQ
+bash demos/04-kafka-flink-iceberg/run.sh --bounded
+bash demos/05-flink-td-enrich/run.sh</code></pre></div>
+    </div>
+
+    <div class="note" style="margin-top:22px;">
+      <strong>One-time Teradata setup is idempotent.</strong> <code>run_setup.sh</code> drops and recreates
+      every demo table, NOS authorization object, and the aircraft registry — safe to re-run whenever the
+      schema needs a clean slate. Expected output ends with <code>RC (return code) = 0</code>.
+    </div>
+  </div>
+</section>
+<section id="demo01">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="subhead">Demo 01 · File ingestion</div>
+      <h2><span class="demo-id" style="margin-right:12px;">01</span>Avro BLOB → <code style="font-size:0.7em;">DATASET</code> column</h2>
+      <p class="sub">Loading Avro container files into a Teradata <code>DATASET STORAGE FORMAT AVRO</code> column,
+      with schema evolution across two file versions — using the classic BTEQ loading path.</p>
+      <div style="display:flex; gap:8px; margin-top:16px; flex-wrap:wrap;">
+        <span class="tag" style="--node-c:var(--c-tpt);"><span class="sw" style="background:var(--c-tpt)"></span>Ingestion: BTEQ DEFERRED BY NAME</span>
+        <span class="tag" style="--node-c:var(--c-teradata);"><span class="sw" style="background:var(--c-teradata)"></span>Feature: schema evolution</span>
+      </div>
+    </div>
+
+    <div class="card" style="padding:24px 24px 16px; overflow-x:auto; margin-top:28px;">
+      <svg class="flow-svg" viewBox="0 0 1040 130" style="width:100%; min-width:760px; height:auto;">
+        <defs>
+  <marker id="arrow-d01" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="var(--border-strong)"></path>
+  </marker>
+  <marker id="arrowHl-d01" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="var(--primary)"></path>
+  </marker>
+</defs>
+<g class="flow-node">
+  <rect x="20" y="45" width="150" height="50" style="stroke:var(--c-producer)"></rect>
+  <text x="95.0" y="67.0" text-anchor="middle" class="lbl">Avro generator</text>
+  <text x="95.0" y="83.0" text-anchor="middle" class="sub">fastavro · 2 files</text>
+</g>
+<path class="flow-edge" d="M170,70 L210,70" marker-end="url(#arrow-d01)"></path>
+<g class="flow-node">
+  <rect x="210" y="45" width="180" height="50" style="stroke:var(--c-tpt)"></rect>
+  <text x="300.0" y="67.0" text-anchor="middle" class="lbl">BTEQ</text>
+  <text x="300.0" y="83.0" text-anchor="middle" class="sub">DEFERRED BY NAME</text>
+</g>
+<path class="flow-edge" d="M390,70 L450,70" marker-end="url(#arrow-d01)"></path>
+<rect x="430" y="14" width="610" height="92" rx="12" fill="none" stroke="var(--border-strong)" stroke-width="1.6" stroke-dasharray="3 5"></rect>
+<text x="446" y="32" text-anchor="start" class="sub">TERADATA</text>
+<g class="flow-node">
+  <rect x="450" y="45" width="170" height="50" style="stroke:var(--c-teradata)"></rect>
+  <text x="535.0" y="67.0" text-anchor="middle" class="lbl">avro_product_stage</text>
+  <text x="535.0" y="83.0" text-anchor="middle" class="sub">BLOB column</text>
+</g>
+<path class="flow-edge active" d="M620,70 L850,70" marker-end="url(#arrowHl-d01)"></path>
+<text x="735" y="58" text-anchor="middle" class="sub" fill="var(--c-teradata)">AvroContainerSplit</text>
+<g class="flow-node hl">
+  <rect x="850" y="45" width="170" height="50" style="stroke:var(--c-teradata)"></rect>
+  <text x="935.0" y="67.0" text-anchor="middle" class="lbl">avro_product</text>
+  <text x="935.0" y="83.0" text-anchor="middle" class="sub">DATASET AVRO</text>
+</g>
+      </svg>
+    </div>
+
+    <div class="cols2" style="margin-top:40px; align-items:start;">
+      <div>
+        <div class="subhead">What it demonstrates</div>
+        <ul class="bullets">
+          <li>The documented Teradata workflow for loading Avro Object Container Files: stage each file as a
+            BLOB with BTEQ <code>DEFERRED BY NAME</code>, then expand it into individual records with the
+            <code>AvroContainerSplit</code> table operator.</li>
+          <li><strong>Schema evolution without ETL rewrites:</strong> v1 records (5 fields) and v2 records (8 fields)
+            coexist in the same <code>DATASET AVRO</code> column; querying a v2 field on a v1 row returns <code>NULL</code>.</li>
+          <li>Dot-notation access (<code>avro.."field_name"</code>) on <code>DATASET</code> columns.</li>
+          <li><code>AVRO_CHECK()</code> for inline validity verification.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="subhead">How to run</div>
+        <div class="codepanel">
+          <div class="codepanel-head"><span class="fname">terminal</span></div>
+          <div class="codepanel-body"><pre><code class="language-bash"># From project root
+bash demos/01-avro-blob/run.sh</code></pre></div>
+        </div>
+        <div class="note" style="margin-top:16px;">
+          <strong>Why a dedicated split operator?</strong> The Avro Object Container File format wraps each record
+          in file-level framing — sync markers and an embedded schema header. <code>AvroContainerSplit</code> is
+          the table operator built to walk that structure and emit one row per Avro record; a plain
+          <code>CAST</code> operates on a single value and has no concept of that framing.
+        </div>
+      </div>
+    </div>
+
+    <div class="subhead" style="margin-top:44px;">How it works</div>
+    <div class="steps">
+      <div class="step" style="--node-c:var(--c-producer)">
+        <div class="step-num">1</div>
+        <h4>Generate Avro container files</h4>
+        <p><code>fastavro</code> writes binary Avro Object Container File format. The schema carries
+        <strong>no namespace</strong>, since a namespace produces a dotted record name, and Teradata's
+        Avro&nbsp;1.7.7 parser reads only unqualified record names.</p>
+        <span class="mini">kafka/producers/generate_product_avro.py</span>
+      </div>
+      <div class="step" style="--node-c:var(--c-tpt)">
+        <div class="step-num">2</div>
+        <h4>Stage as BLOB via BTEQ <code style="font-size:0.85em;">DEFERRED BY NAME</code></h4>
+        <p>An index file holds the path to the <code>.avro</code> file; BTEQ reads the binary and inserts it as a
+        single BLOB row. One row per container file.</p>
+        <span class="mini">avro_product_stage</span>
+      </div>
+      <div class="step" style="--node-c:var(--c-teradata)">
+        <div class="step-num">3</div>
+        <h4>Split with <code style="font-size:0.85em;">AvroContainerSplit</code></h4>
+        <p>A FROM-clause table operator: <code>ON (key_col, blob_col)</code> → returns
+        <code>(out_container_id, avro_object_id, avro_value)</code>, one output row per Avro record in the container.</p>
+      </div>
+      <div class="step" style="--node-c:var(--c-teradata)">
+        <div class="step-num">4</div>
+        <h4>Query with dot notation</h4>
+        <p><code>avro.."field_name"</code> for recursive field access; <code>AVRO_CHECK(avro)</code> to validate
+        individual rows.</p>
+      </div>
+    </div>
+
+    <div class="subhead" style="margin-top:44px;">Tables &amp; code</div>
+    <div class="codepanel" id="cp-demo01">
+      <div class="codepanel-head">
+        <div class="codepanel-tabs">
+          <button class="codepanel-tab active" onclick="showTab('cp-demo01',0)">DDL</button>
+          <button class="codepanel-tab" onclick="showTab('cp-demo01',1)">decode.bteq</button>
+          <button class="codepanel-tab" onclick="showTab('cp-demo01',2)">sample queries</button>
+        </div>
+      </div>
+      <div class="codepanel-body">
+        <div class="code-view active"><pre><code class="language-sql">-- Staging: one row per .avro file (BLOB)
+CREATE TABLE avro_product_stage (
+  stage_id  INTEGER NOT NULL,
+  container BLOB
+) PRIMARY INDEX (stage_id);
+
+-- Target: one row per Avro record (DATASET AVRO)
+CREATE MULTISET TABLE avro_product (
+  container_id  INTEGER,
+  avro_obj_id   INTEGER,
+  avro          DATASET(2097088000) INLINE LENGTH 64000 STORAGE FORMAT AVRO
+) PRIMARY INDEX (container_id);</code></pre></div>
+        <div class="code-view"><pre><code class="language-sql">-- BTEQ: stage one file (load_v1.bteq / load_v2.bteq use this pattern)
+.IMPORT VARTEXT file=data/sample/load_v1_index.txt
+.REPEAT *
+USING (c1 BLOB AS DEFERRED BY NAME)
+INSERT INTO demo_db.avro_product_stage (1, :c1);
+
+-- decode.bteq: split the container, then verify
+INSERT INTO demo_db.avro_product
+SELECT T.out_container_id, T.avro_object_id, T.avro_value
+FROM AvroContainerSplit (
+  ON (SELECT stage_id, container FROM demo_db.avro_product_stage)
+) AS T;
+
+SELECT AVRO_CHECK(avro) AS validity, COUNT(*) AS cnt
+FROM demo_db.avro_product GROUP BY 1;</code></pre></div>
+        <div class="code-view"><pre><code class="language-sql">-- All records with dot-notation field access
+SELECT
+  container_id                AS schema_version,
+  avro.."product_id"          AS product_id,
+  avro.."name"                AS name,
+  avro.."price"                AS price,
+  avro.."description"         AS description,   -- NULL for v1 rows
+  avro.."discount_pct"        AS discount_pct   -- NULL for v1 rows
+FROM demo_db.avro_product
+ORDER BY 1, 2;
+
+-- Records above a price threshold
+SELECT avro.."product_id", avro.."price", avro.."discount_pct"
+FROM demo_db.avro_product
+WHERE avro.."discount_pct" > 20.0;</code></pre></div>
+      </div>
+    </div>
+
+    <div class="subhead" style="margin-top:44px;">What to expect</div>
+    <div class="terminal">
+      <div class="terminal-head">
+        <span class="dot" style="background:#FF5F57"></span><span class="dot" style="background:#FEBC2E"></span><span class="dot" style="background:#28C840"></span>
+        <span class="label">bash demos/01-avro-blob/run.sh</span>
+      </div>
+      <pre><span class="term-head2">══════════════════════════════════════════════
+  Demo 1: Avro BLOB → Teradata DATASET column
+══════════════════════════════════════════════</span>
+
+<span class="term-hl">── 1/4  Generating Avro container files</span>
+Written 30 records → data/sample/product_v1.avro
+Written 30 records → data/sample/product_v2.avro
+
+<span class="term-hl">── 2/4  Clearing staging tables</span>
+
+<span class="term-hl">── 3/4  Loading Avro files into Teradata (BTEQ DEFERRED BY NAME)</span>
+      → product_v1.avro (schema v1: 5 fields)
+      <span class="term-ok">*** Insert completed. One row added.</span>
+      → product_v2.avro (schema v2: 8 fields)
+      <span class="term-ok">*** Insert completed. One row added.</span>
+
+<span class="term-hl">── 4/4  Decoding BLOBs into DATASET column and verifying</span>
+
+  -- AvroContainerSplit: 60 rows inserted
+  container_id    records
+  ------------    -------
+             1         30
+             2         30
+
+  -- AVRO_CHECK: all OK
+  validity    cnt
+  --------    ---
+  <span class="term-ok">OK           60</span>
+
+  -- schema evolution: v1 rows return NULL for v2-only fields
+  ver   product_id       price   description   discount_pct
+  ---   ------------     ------  -----------   ------------
+    1   08a63ba7-...     19.99   <span class="term-dim">(null)</span>        <span class="term-dim">(null)</span>
+    2   f3a1c204-...    149.99   Premium...    12.5</pre>
+    </div>
+
+  </div>
+</section>
+<section id="demo01a">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="subhead">Demo 01A · File ingestion, TPT variant</div>
+      <h2><span class="demo-id" style="margin-right:12px;">01A</span>Same Avro story, loaded by TPT</h2>
+      <p class="sub">Identical end state to Demo&nbsp;01 — two Avro files staged as BLOBs, split with
+      <code>AvroContainerSplit</code>, queried with dot notation — but the staging step now runs as a single
+      <strong>TPT STREAM</strong> job instead of two BTEQ sessions.</p>
+      <div style="display:flex; gap:8px; margin-top:16px; flex-wrap:wrap;">
+        <span class="tag" style="--node-c:var(--c-tpt);"><span class="sw" style="background:var(--c-tpt)"></span>Ingestion: TPT STREAM + DataConnector</span>
+        <span class="tag" style="--node-c:var(--c-teradata);"><span class="sw" style="background:var(--c-teradata)"></span>Feature: restartable multi-file load</span>
+      </div>
+    </div>
+
+    <div class="card" style="padding:24px 24px 16px; overflow-x:auto; margin-top:28px;">
+      <svg class="flow-svg" viewBox="0 0 1190 130" style="width:100%; min-width:860px; height:auto;">
+        <defs>
+  <marker id="arrow-d01a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="var(--border-strong)"></path>
+  </marker>
+  <marker id="arrowHl-d01a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="var(--primary)"></path>
+  </marker>
+</defs>
+<g class="flow-node">
+  <rect x="10" y="45" width="150" height="50" style="stroke:var(--c-producer)"></rect>
+  <text x="85.0" y="67.0" text-anchor="middle" class="lbl">Avro generator</text>
+  <text x="85.0" y="83.0" text-anchor="middle" class="sub">fastavro · N files</text>
+</g>
+<path class="flow-edge" d="M160,70 L205,70" marker-end="url(#arrow-d01a)"></path>
+<g class="flow-node">
+  <rect x="205" y="45" width="150" height="50" style="stroke:var(--c-tpt)"></rect>
+  <text x="280.0" y="67.0" text-anchor="middle" class="lbl">manifest.txt</text>
+  <text x="280.0" y="83.0" text-anchor="middle" class="sub">stage_id|path</text>
+</g>
+<path class="flow-edge" d="M355,70 L400,70" marker-end="url(#arrow-d01a)"></path>
+<g class="flow-node">
+  <rect x="400" y="45" width="190" height="50" style="stroke:var(--c-tpt)"></rect>
+  <text x="495.0" y="67.0" text-anchor="middle" class="lbl">TPT DataConnector</text>
+  <text x="495.0" y="83.0" text-anchor="middle" class="sub">+ STREAM, one job</text>
+</g>
+<path class="flow-edge" d="M590,70 L630,70" marker-end="url(#arrow-d01a)"></path>
+<rect x="610" y="14" width="430" height="92" rx="12" fill="none" stroke="var(--border-strong)" stroke-width="1.6" stroke-dasharray="3 5"></rect>
+<text x="626" y="32" text-anchor="start" class="sub">TERADATA</text>
+<g class="flow-node">
+  <rect x="630" y="45" width="160" height="50" style="stroke:var(--c-teradata)"></rect>
+  <text x="710.0" y="67.0" text-anchor="middle" class="lbl">avro_product_stage</text>
+  <text x="710.0" y="83.0" text-anchor="middle" class="sub">BLOB column</text>
+</g>
+<path class="flow-edge active" d="M790,70 L1000,70" marker-end="url(#arrowHl-d01a)"></path>
+<text x="895" y="58" text-anchor="middle" class="sub" fill="var(--c-teradata)">AvroContainerSplit</text>
+<g class="flow-node hl">
+  <rect x="1000" y="45" width="160" height="50" style="stroke:var(--c-teradata)"></rect>
+  <text x="1080.0" y="67.0" text-anchor="middle" class="lbl">avro_product</text>
+  <text x="1080.0" y="83.0" text-anchor="middle" class="sub">DATASET AVRO</text>
+</g>
+      </svg>
+    </div>
+
+    <div class="subhead" style="margin-top:40px;">What it demonstrates</div>
+    <ul class="bullets">
+      <li><strong>TPT STREAM is the only high-throughput TPT operator that supports BLOB/CLOB columns</strong> —
+        LOAD (FastLoad) and MLoad both reject LOB columns at job start; STREAM accepts them.</li>
+      <li><code>BLOB(size) AS DEFERRED BY NAME</code> is the TPT schema attribute for a BLOB column whose value is
+        a file path — DataConnector reads the bytes at that path and passes them to STREAM. It is the direct TPT
+        equivalent of BTEQ's <code>AS DEFERRED BY NAME</code>.</li>
+      <li><strong>Manifest-based multi-file loading</strong> — a single TPT job processes a pipe-delimited manifest
+        of N files; Demo&nbsp;01 needed two separate BTEQ sessions. TPT scales to thousands of files with no code changes.</li>
+      <li><strong>TPT job infrastructure</strong> — explicit <code>LogTable</code> / <code>ErrorTable</code>,
+        checkpoint/restart via <code>PRESERVE_RESTART_INFO</code>, formal job definition vs BTEQ's imperative script.</li>
+    </ul>
+
+    <div class="subhead" style="margin-top:40px;">BTEQ vs TPT, side by side</div>
+    <div class="tbl-wrap">
+      <table class="compare-hl">
+        <tr><th>Attribute</th><th>Demo 01 — BTEQ</th><th>Demo 01A — TPT STREAM</th></tr>
+        <tr><td>Files per invocation</td><td>1 (one BTEQ session per file)</td><td>N (all files in manifest, one job)</td></tr>
+        <tr><td>BLOB support</td><td>Yes</td><td>Yes — STREAM is the only high-throughput operator that accepts LOBs</td></tr>
+        <tr><td>Restart / checkpoint</td><td>No</td><td>Yes (<code>PRESERVE_RESTART_INFO</code>, auto-set by STREAM)</td></tr>
+        <tr><td>Job definition</td><td>Imperative <code>.IMPORT</code> in a BTEQ script</td><td>Declarative TPT job file (<code>.tbuild</code>)</td></tr>
+        <tr><td>Before re-running</td><td>—</td><td><code>twbrmcp ttuuser</code> must clear the checkpoint, or tbuild treats the next run as a restart</td></tr>
+        <tr><td>Typical use case</td><td>Interactive, ad-hoc, 1–2 files</td><td>Automated, bulk, SLA-bound, N files</td></tr>
+      </table>
+    </div>
+
+    <div class="subhead" style="margin-top:40px;">Manifest format</div>
+    <div class="codepanel">
+      <div class="codepanel-head"><span class="fname">data/sample/avro_manifest.txt</span></div>
+      <div class="codepanel-body"><pre><code class="language-bash">stage_id|container_path
+1|/tpt/data/sample/product_v1.avro
+2|/tpt/data/sample/product_v2.avro</code></pre></div>
+    </div>
+    <ul class="bullets" style="margin-top:14px;">
+      <li>Pipe (<code>|</code>) delimiter matches <code>TextDelimiter = '|'</code> in the tbuild script.</li>
+      <li><code>stage_id</code> must be unique — it maps to the PRIMARY INDEX of <code>avro_product_stage</code>, and is
+        read as VARCHAR (DELIMITED format rejects INTEGER), then <code>CAST</code> to INTEGER in the INSERT.</li>
+      <li>Container paths are paths <strong>inside the TPT container</strong> (the <code>/tpt/...</code> bind-mount).</li>
+    </ul>
+
+    <div class="subhead" style="margin-top:40px;">How to run</div>
+    <div class="codepanel">
+      <div class="codepanel-head"><span class="fname">terminal</span></div>
+      <div class="codepanel-body"><pre><code class="language-bash">bash demos/01a-avro-blob-tpt/run.sh</code></pre></div>
+    </div>
+
+    <div class="subhead" style="margin-top:40px;">What to expect</div>
+    <div class="terminal">
+      <div class="terminal-head">
+        <span class="dot" style="background:#FF5F57"></span><span class="dot" style="background:#FEBC2E"></span><span class="dot" style="background:#28C840"></span>
+        <span class="label">bash demos/01a-avro-blob-tpt/run.sh</span>
+      </div>
+      <pre><span class="term-head2">======================================================
+  Demo 1A: Avro BLOB → Teradata DATASET column (TPT)
+======================================================</span>
+
+<span class="term-hl">── 1/4  Generating Avro container files + TPT manifest</span>
+
+<span class="term-hl">── 2/4  Clearing staging tables and TPT work tables</span>
+
+<span class="term-hl">── 3/4  Loading Avro files into Teradata (TPT STREAM, BLOB AS DEFERRED BY NAME)</span>
+      manifest: /tpt/data/sample/avro_manifest.txt (2 container files)
+      <span class="term-dim">twbrmcp ttuuser   # clears any checkpoint from a previous run</span>
+      <span class="term-ok">Job ttuuser completed successfully</span>
+      stage_id 1 = product_v1.avro (schema v1: 5 fields)
+      stage_id 2 = product_v2.avro (schema v2: 8 fields)
+
+<span class="term-hl">── 4/4  Decoding BLOBs into DATASET column and verifying</span>
+  (identical AvroContainerSplit + AVRO_CHECK output to Demo 1 — 60 rows, all OK)
+
+======================================================
+  Demo 1A complete!
+  TPT loaded both Avro container files in <span class="term-hl">one job</span>.
+======================================================</pre>
+    </div>
+
+  </div>
+</section>
+<section id="demo02">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="subhead">Demo 02 · Near-real-time streaming</div>
+      <h2><span class="demo-id" style="margin-right:12px;">02</span>Kafka → TPT STREAM</h2>
+      <p class="sub">A live Kafka topic, streamed into Teradata with the TPT Kafka Access Module — rows visible
+      in Vantage every ~5 seconds for as long as the feed runs.</p>
+      <div style="display:flex; gap:8px; margin-top:16px; flex-wrap:wrap;">
+        <span class="tag" style="--node-c:var(--c-kafka);"><span class="sw" style="background:var(--c-kafka)"></span>Latency tier: Near real-time (200ms–5s)</span>
+        <span class="tag" style="--node-c:var(--c-teradata);"><span class="sw" style="background:var(--c-teradata)"></span>Feature: <code>tbuild -l 5</code> latency flush</span>
+      </div>
+    </div>
+
+    <div class="card" style="padding:24px 24px 16px; overflow-x:auto; margin-top:28px;">
+      <svg class="flow-svg" viewBox="0 0 1110 130" style="width:100%; min-width:840px; height:auto;">
+        <defs>
+  <marker id="arrow-d02" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="var(--border-strong)"></path>
+  </marker>
+  <marker id="arrowHl-d02" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="var(--primary)"></path>
+  </marker>
+</defs>
+<g class="flow-node">
+  <rect x="10" y="45" width="175" height="50" style="stroke:var(--c-producer)"></rect>
+  <text x="97.5" y="67.0" text-anchor="middle" class="lbl">adsb_producer.py</text>
+  <text x="97.5" y="83.0" text-anchor="middle" class="sub">continuous, 1 msg/s</text>
+</g>
+<path class="flow-edge" d="M185,70 L225,70" marker-end="url(#arrow-d02)"></path>
+<g class="flow-node">
+  <rect x="225" y="45" width="140" height="50" style="stroke:var(--c-kafka)"></rect>
+  <text x="295.0" y="67.0" text-anchor="middle" class="lbl">Kafka topic</text>
+  <text x="295.0" y="83.0" text-anchor="middle" class="sub">adsb-positions</text>
+</g>
+<path class="flow-edge" d="M365,70 L405,70" marker-end="url(#arrow-d02)"></path>
+<g class="flow-node">
+  <rect x="405" y="45" width="195" height="50" style="stroke:var(--c-tpt)"></rect>
+  <text x="502.5" y="67.0" text-anchor="middle" class="lbl">Kafka Access Module</text>
+  <text x="502.5" y="83.0" text-anchor="middle" class="sub">libkafkaaxsmod.so</text>
+</g>
+<path class="flow-edge" d="M600,70 L640,70" marker-end="url(#arrow-d02)"></path>
+<g class="flow-node">
+  <rect x="640" y="45" width="150" height="50" style="stroke:var(--c-tpt)"></rect>
+  <text x="715.0" y="67.0" text-anchor="middle" class="lbl">TPT STREAM</text>
+  <text x="715.0" y="83.0" text-anchor="middle" class="sub">tbuild -l 5</text>
+</g>
+<path class="flow-edge active" d="M790,70 L885,70" marker-end="url(#arrowHl-d02)"></path>
+<text x="837" y="60" text-anchor="middle" class="sub" fill="var(--primary)">5s flush</text>
+<g class="flow-node hl">
+  <rect x="885" y="45" width="195" height="50" style="stroke:var(--c-teradata)"></rect>
+  <text x="982.5" y="67.0" text-anchor="middle" class="lbl">adsb_positions</text>
+  <text x="982.5" y="83.0" text-anchor="middle" class="sub">Teradata · PPI table</text>
+</g>
+      </svg>
+    </div>
+    <div class="cols2" style="margin-top:40px; align-items:start;">
+      <div>
+        <div class="subhead">What it demonstrates</div>
+        <ul class="bullets">
+          <li>The TPT Kafka Access Module (<code>libkafkaaxsmod.so</code>) connecting to a live topic and streaming
+            pipe-delimited messages into Teradata with no intermediary file.</li>
+          <li><code>tbuild -l 5</code> — the latency-interval flag that forces STREAM to flush its internal buffers
+            and commit rows every 5 seconds, even against a continuously-producing Kafka feed.</li>
+          <li><code>Format='DELIMITED'</code> with an all-VARCHAR schema, then typed conversion
+            (<code>FLOAT</code>, <code>INTEGER</code>, <code>BYTEINT</code>, <code>DATE</code>, <code>TIMESTAMP(3)</code>)
+            inside the <code>APPLY INSERT</code>.</li>
+          <li>A partitioned target table (PPI on <code>pos_date</code>) — STREAM inserts directly into the correct
+            partition.</li>
+          <li>Graceful shutdown: Ctrl+C kills the producer; TPT drains remaining buffered messages, then exits cleanly.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="subhead">How to run</div>
+        <div class="codepanel">
+          <div class="codepanel-head"><span class="fname">terminal</span></div>
+          <div class="codepanel-body"><pre><code class="language-bash"># Continuous streaming (default); press Ctrl+C to stop
+bash demos/02-kafka-tpt-stream/run.sh
+
+# Bounded mode — 100 messages; exits automatically
+bash demos/02-kafka-tpt-stream/run.sh --bounded</code></pre></div>
+        </div>
+        <div class="note" style="margin-top:16px;">
+          <strong>Why <code>-l</code> matters.</strong> Without it, STREAM only flushes at end-of-source — which
+          never fires while a live producer keeps the Kafka idle timeout from triggering. Rows would sit buffered
+          and invisible until you stopped the feed. <span style="color:var(--text-faint);">Source: TPT Reference
+          Guide, B035-2436-103K.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="subhead" style="margin-top:44px;">How it works</div>
+    <div class="steps">
+      <div class="step" style="--node-c:var(--c-teradata)">
+        <div class="step-num">1</div>
+        <h4>Reset state</h4>
+        <p>BTEQ truncates <code>adsb_positions</code> and drops STREAM operator work tables; the Kafka topic is
+        deleted and recreated so partition offsets start clean.</p>
+      </div>
+      <div class="step" style="--node-c:var(--c-tpt)">
+        <div class="step-num">2</div>
+        <h4>TPT STREAM job starts (background), with <code style="font-size:0.85em;">-l 5</code></h4>
+        <p>DataConnector PRODUCER + Kafka Access Module connect with
+        <code>AccessModuleInitStr: -M C -T &lt;topic&gt; -B &lt;broker&gt; -P 0 -W 30</code> (30s drain window).</p>
+      </div>
+      <div class="step" style="--node-c:var(--c-producer)">
+        <div class="step-num">3</div>
+        <h4>Python producer runs continuously</h4>
+        <p>10 synthetic aircraft, one position update each per second. Each message:
+        <code>icao24|callsign|lat|lon|...|ts\n</code> — the trailing <code>\n</code> is the DELIMITED record terminator.</p>
+      </div>
+      <div class="step" style="--node-c:var(--c-kafka)">
+        <div class="step-num">4</div>
+        <h4>Every 5 seconds: flush</h4>
+        <p>STREAM's internal buffers flush on the latency interval — roughly 50 rows committed to
+        <code>adsb_positions</code> per cycle.</p>
+      </div>
+      <div class="step" style="--node-c:var(--c-teradata)">
+        <div class="step-num">5</div>
+        <h4>Ctrl+C → graceful drain</h4>
+        <p>Producer killed → Kafka idle timeout (<code>-W 30</code>) fires → STREAM flushes whatever's buffered
+        and exits.</p>
+      </div>
+    </div>
+
+    <div class="subhead" style="margin-top:44px;">Key technical constraints</div>
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>Constraint</th><th>Detail</th></tr>
+        <tr><td><code>tbuild -l &lt;seconds&gt;</code></td><td>Required for continuous streaming — without it, flush only happens at end-of-source, which never fires with a live producer.</td></tr>
+        <tr><td>Two different <code>-W</code> flags</td><td><code>tbuild -W</code> is the subprocess spawn timeout; the <code>-W</code> inside <code>AccessModuleInitStr</code> is the Kafka idle timeout — unrelated options that happen to share a letter.</td></tr>
+        <tr><td><code>AccessModuleName</code> / <code>AccessModuleInitStr</code></td><td>Named attributes like <code>TopicName</code> are silently ignored — configuration goes through CLI-style flags instead.</td></tr>
+        <tr><td>All schema columns VARCHAR</td><td><code>Format='DELIMITED'</code> requires VARCHAR/CLOB; typed conversion happens via <code>CAST</code> in <code>APPLY INSERT</code>.</td></tr>
+        <tr><td><code>\n</code> record terminator</td><td>Messages without it get concatenated into one giant record, overflowing fields.</td></tr>
+        <tr><td>LogTable / ErrorTable</td><td>Must be named explicitly — STREAM defaults to <code>DBC</code>-prefixed names that require DBC privileges.</td></tr>
+      </table>
+    </div>
+
+    <div class="subhead" style="margin-top:44px;">Table &amp; sample queries</div>
+    <div class="codepanel" id="cp-demo02">
+      <div class="codepanel-head">
+        <div class="codepanel-tabs">
+          <button class="codepanel-tab active" onclick="showTab('cp-demo02',0)">DDL</button>
+          <button class="codepanel-tab" onclick="showTab('cp-demo02',1)">queries</button>
+        </div>
+      </div>
+      <div class="codepanel-body">
+        <div class="code-view active"><pre><code class="language-sql">CREATE MULTISET TABLE adsb_positions (
+  icao24        CHAR(6)       NOT NULL,
+  callsign      VARCHAR(8),
+  pos_date      DATE          NOT NULL,
+  latitude      DECIMAL(9,6)  NOT NULL,
+  longitude     DECIMAL(10,6) NOT NULL,
+  altitude      INTEGER,
+  velocity      DECIMAL(7,2),
+  heading       DECIMAL(6,2),
+  vertical_rate INTEGER,
+  on_ground     BYTEINT       DEFAULT 0,
+  squawk        CHAR(4),
+  ts            TIMESTAMP(3)  NOT NULL,
+  ingest_ts     TIMESTAMP(0)  DEFAULT CURRENT_TIMESTAMP(0)
+)
+PRIMARY INDEX (icao24)
+PARTITION BY RANGE_N(pos_date BETWEEN DATE '2024-01-01' AND DATE '2030-12-31' EACH INTERVAL '1' DAY);</code></pre></div>
+        <div class="code-view"><pre><code class="language-sql">-- Recent position fixes
+SELECT icao24, callsign, latitude, longitude, altitude, ts
+FROM demo_db.adsb_positions
+WHERE pos_date = CURRENT_DATE
+ORDER BY ts DESC;
+
+-- Ingest latency
+SELECT icao24,
+       AVG( (CAST(ingest_ts AS TIMESTAMP(3)) - ts) SECOND(4) ) AS avg_lag_secs
+FROM demo_db.adsb_positions
+GROUP BY 1
+ORDER BY 1;</code></pre></div>
+      </div>
+    </div>
+
+    <div class="subhead" style="margin-top:44px;">What to expect</div>
+    <div class="terminal">
+      <div class="terminal-head">
+        <span class="dot" style="background:#FF5F57"></span><span class="dot" style="background:#FEBC2E"></span><span class="dot" style="background:#28C840"></span>
+        <span class="label">bash demos/02-kafka-tpt-stream/run.sh</span>
+      </div>
+      <pre><span class="term-head2">======================================================
+  Demo 2: Kafka → Teradata TPT STREAM (ADS-B)
+  Mode:               CONTINUOUS (Ctrl+C to stop)
+======================================================</span>
+
+<span class="term-hl">── 1/3  Clearing TPT and Kafka state from any prior run</span>
+<span class="term-hl">── 2/3  Starting TPT STREAM job and producer</span>
+
+  [12:01:15 UTC]  <span class="term-ok">STATUS rows=80 latest=2026-06-22 12:01:10.443</span>
+  [12:01:25 UTC]  <span class="term-ok">STATUS rows=180 latest=2026-06-22 12:01:20.512</span>
+  ...
+
+^C
+<span class="term-dim">── Stopping producer...
+── Waiting for TPT to drain (up to 30 s)...</span>
+   <span class="term-ok">Job ttuuser completed successfully</span>
+
+<span class="term-hl">── 3/3  Final row count</span>
+  positions_received  earliest_ts              latest_ts              aircraft_seen
+  ------------------  -------------------      -------------------    -------------
+                 630  2026-06-22 12:01:05.210  2026-06-22 12:02:08    10</pre>
+    </div>
+
+    <div class="note" style="margin-top:24px; --node-c:var(--c-tpt);">
+      <strong>Where this sits on the latency ladder.</strong> Teradata's near-real-time tier (TPT STREAM,
+      200ms–5s) sits between true real-time (custom in-database apps, ≤µs) and microbatch (TPT STREAM
+      configured for longer intervals, or the TPT Update operator on a 5–15 minute cadence). DHL's production
+      deployment of this exact pattern — Kafka + TPT STREAM, 17 source systems — sustained
+      <strong>6,200 rows/sec at 0.2% additional Teradata CPU</strong>.
+    </div>
+
+  </div>
+</section>
+<section id="demo03">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="subhead">Demo 03 · Object storage ingestion</div>
+      <h2><span class="demo-id" style="margin-right:12px;">03</span>Kafka Connect → MinIO CSV → NOS</h2>
+      <p class="sub">Weather observations stream through a Kafka Connect S3 Sink into time-partitioned MinIO
+      folders, then get queried and incrementally loaded via Teradata Native Object Store with partition pruning.</p>
+      <div style="display:flex; gap:8px; margin-top:16px; flex-wrap:wrap;">
+        <span class="tag" style="--node-c:var(--c-minio);"><span class="sw" style="background:var(--c-minio)"></span>Latency tier: Microbatch (~5 min)</span>
+        <span class="tag" style="--node-c:var(--c-teradata);"><span class="sw" style="background:var(--c-teradata)"></span>Feature: <code>PATHPATTERN</code> partition pruning</span>
+      </div>
+    </div>
+
+    <div class="card" style="padding:24px 24px 16px; overflow-x:auto; margin-top:28px;">
+      <svg class="flow-svg" viewBox="0 0 1230 130" style="width:100%; min-width:940px; height:auto;">
+        <defs>
+  <marker id="arrow-d03" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="var(--border-strong)"></path>
+  </marker>
+  <marker id="arrowHl-d03" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="var(--primary)"></path>
+  </marker>
+</defs>
+<g class="flow-node">
+  <rect x="10" y="45" width="150" height="50" style="stroke:var(--c-producer)"></rect>
+  <text x="85.0" y="67.0" text-anchor="middle" class="lbl">weather_kafka.py</text>
+  <text x="85.0" y="83.0" text-anchor="middle" class="sub">every 5 min</text>
+</g>
+<path class="flow-edge" d="M160,70 L195,70" marker-end="url(#arrow-d03)"></path>
+<g class="flow-node">
+  <rect x="195" y="45" width="135" height="50" style="stroke:var(--c-kafka)"></rect>
+  <text x="262.5" y="67.0" text-anchor="middle" class="lbl">Kafka topic</text>
+  <text x="262.5" y="83.0" text-anchor="middle" class="sub">weather-csv</text>
+</g>
+<path class="flow-edge" d="M330,70 L365,70" marker-end="url(#arrow-d03)"></path>
+<g class="flow-node">
+  <rect x="365" y="45" width="165" height="50" style="stroke:var(--c-connect)"></rect>
+  <text x="447.5" y="67.0" text-anchor="middle" class="lbl">Kafka Connect</text>
+  <text x="447.5" y="83.0" text-anchor="middle" class="sub">S3 Sink connector</text>
+</g>
+<path class="flow-edge" d="M530,70 L565,70" marker-end="url(#arrow-d03)"></path>
+<g class="flow-node">
+  <rect x="565" y="45" width="165" height="50" style="stroke:var(--c-minio)"></rect>
+  <text x="647.5" y="67.0" text-anchor="middle" class="lbl">MinIO</text>
+  <text x="647.5" y="83.0" text-anchor="middle" class="sub">YYYY-MM-DD/HH/</text>
+</g>
+<path class="flow-edge" d="M730,70 L765,70" marker-end="url(#arrow-d03)"></path>
+<g class="flow-node">
+  <rect x="765" y="45" width="165" height="50" style="stroke:var(--c-minio)"></rect>
+  <text x="847.5" y="67.0" text-anchor="middle" class="lbl">NOS foreign table</text>
+  <text x="847.5" y="83.0" text-anchor="middle" class="sub">PATHPATTERN prune</text>
+</g>
+<path class="flow-edge active" d="M930,70 L1035,70" marker-end="url(#arrowHl-d03)"></path>
+<text x="982" y="60" text-anchor="middle" class="sub" fill="var(--primary)">incremental</text>
+<g class="flow-node hl">
+  <rect x="1035" y="45" width="165" height="50" style="stroke:var(--c-teradata)"></rect>
+  <text x="1117.5" y="67.0" text-anchor="middle" class="lbl">weather_obs</text>
+  <text x="1117.5" y="83.0" text-anchor="middle" class="sub">Teradata table</text>
+</g>
+      </svg>
+    </div>
+    <div class="cols2" style="margin-top:40px; align-items:start;">
+      <div>
+        <div class="subhead">What it demonstrates</div>
+        <ul class="bullets">
+          <li>Kafka Connect S3 Sink (<code>ByteArrayFormat</code>, <code>flush.size=1</code>,
+            <code>TimeBasedPartitioner</code>) landing one CSV file per Kafka message under a plain
+            time-partitioned path: <code>YYYY-MM-DD/HH/</code>.</li>
+          <li><code>READ_NOS</code> with <code>RETURNTYPE('NOSREAD_KEYS')</code> to enumerate exactly which partition
+            folders and files Kafka Connect wrote.</li>
+          <li><code>CREATE FOREIGN TABLE</code> with <code>PATHPATTERN</code> — NOS <strong>partition pruning</strong>,
+            10–100× faster on large datasets since object listing and fetching skip non-matching partitions entirely.</li>
+          <li><strong>Incremental load pattern:</strong> the FOREIGN TABLE covers the full MinIO path (all history);
+            each run's <code>INSERT INTO weather_obs</code> scopes to the current hour's folder only.</li>
+          <li><code>--fresh</code> flag for a full clean-slate reset (purges MinIO and clears all <code>weather_obs</code> rows).</li>
+        </ul>
+      </div>
+      <div>
+        <div class="subhead">How to run</div>
+        <div class="codepanel">
+          <div class="codepanel-head"><span class="fname">terminal</span></div>
+          <div class="codepanel-body"><pre><code class="language-bash"># Accumulates this hour's data into weather_obs
+bash demos/03-kafka-csv-minio/run.sh
+
+# Full reset: purge MinIO + clear all weather_obs rows
+bash demos/03-kafka-csv-minio/run.sh --fresh</code></pre></div>
+        </div>
+        <p style="font-size:13px; margin-top:10px; color:var(--text-faint);">Runtime: ~11 minutes for the default 3 batches at 5-minute intervals.</p>
+      </div>
+    </div>
+
+    <div class="subhead" style="margin-top:44px;">How it works</div>
+    <div class="steps">
+      <div class="step" style="--node-c:var(--c-producer)">
+        <div class="step-num">1</div>
+        <h4>Producer publishes complete CSV batches</h4>
+        <p>One Kafka message = one complete CSV file, header included: 5 stations × 6 offsets = 30 rows, every 5 minutes.</p>
+      </div>
+      <div class="step" style="--node-c:var(--c-connect)">
+        <div class="step-num">2</div>
+        <h4>Kafka Connect S3 Sink writes it straight through</h4>
+        <p><code>ByteArrayFormat</code> writes message bytes as-is; <code>flush.size=1</code> means a new file
+        lands after every single message; <code>TimeBasedPartitioner</code> resolves the path to
+        <code>s3://demo-csv/raw/weather-csv/2026-06-19/14/...</code>.</p>
+      </div>
+      <div class="step" style="--node-c:var(--c-teradata)">
+        <div class="step-num">3</div>
+        <h4>NOS FOREIGN TABLE prunes by path</h4>
+        <p><code>PATHPATTERN ('$var1/$var2/$var3/$var4/$var5')</code> names each path segment.
+        <code>WHERE $var3 = '2026-06-19' AND $var4 = '14'</code> eliminates every other partition before any I/O happens.</p>
+      </div>
+      <div class="step" style="--node-c:var(--c-teradata)">
+        <div class="step-num">4</div>
+        <h4>Incremental INSERT into weather_obs</h4>
+        <p>Header rows are rejected by type-cast failure (<code>CAST('station_id' AS TIMESTAMP)</code> fails cleanly).
+        Prior hours already in <code>weather_obs</code> are left untouched — data accumulates across runs.</p>
+      </div>
+    </div>
+
+    <div class="subhead" style="margin-top:44px;">Key NOS design rules</div>
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>Rule</th><th>Detail</th></tr>
+        <tr><td><code>PATHPATTERN</code></td><td>The most important NOS performance lever — eliminates file listing for non-matching partitions entirely.</td></tr>
+        <tr><td><code>PARTITION BY COLUMN</code></td><td>Parquet/JSON-only on 20.x — adding it to a CSV foreign table triggers error 3706. Omit it; string <code>WHERE</code> clauses on path variables still prune correctly.</td></tr>
+        <tr><td><code>$var</code> vs <code>${VAR}</code></td><td><code>${CURRENT_YEAR}</code> (curly braces) is replaced by a perl preprocessor at script-build time; <code>$var3</code> is a Teradata NOS path variable resolved at query time.</td></tr>
+        <tr><td><code>HEADER('TRUE')</code></td><td>Does not suppress header rows from <code>COUNT(*)</code> — they appear in a raw SELECT and are rejected only at the typed INSERT step, via cast failure.</td></tr>
+        <tr><td><code>STOREDAS</code></td><td>Not accepted for CSV in <code>CREATE FOREIGN TABLE USING</code> on 20.x — omit it; CSV is the default.</td></tr>
+        <tr><td><code>DEFINER TRUSTED</code></td><td><code>EXTERNAL SECURITY DEFINER TRUSTED</code> resolves the auth object in the table's own database; <code>INVOKER TRUSTED</code> would look in the session user's database instead.</td></tr>
+      </table>
+    </div>
+
+    <div class="subhead" style="margin-top:44px;">Tables &amp; queries</div>
+    <div class="codepanel" id="cp-demo03">
+      <div class="codepanel-head">
+        <div class="codepanel-tabs">
+          <button class="codepanel-tab active" onclick="showTab('cp-demo03',0)">Foreign table</button>
+          <button class="codepanel-tab" onclick="showTab('cp-demo03',1)">target table</button>
+          <button class="codepanel-tab" onclick="showTab('cp-demo03',2)">queries</button>
+        </div>
+      </div>
+      <div class="codepanel-body">
+        <div class="code-view active"><pre><code class="language-sql">CREATE MULTISET FOREIGN TABLE weather_nos_ft ,FALLBACK ,
+  EXTERNAL SECURITY DEFINER TRUSTED minio_nos_auth
+(
+  Location          VARCHAR(2048) CHARACTER SET UNICODE CASESPECIFIC,
+  station_id        VARCHAR(4),
+  observation_ts    VARCHAR(30),
+  temperature_c     VARCHAR(10),
+  wind_speed_kts    VARCHAR(5),
+  wind_direction    VARCHAR(5),
+  visibility_m      VARCHAR(7),
+  precipitation_mm  VARCHAR(7),
+  pressure_hpa      VARCHAR(8),
+  conditions        VARCHAR(10)
+)
+USING (
+  LOCATION    ('/S3/&lt;host&gt;:9000/demo-csv/raw/weather-csv/')
+  HEADER      ('TRUE')
+  PATHPATTERN ('$var1/$var2/$var3/$var4/$var5')
+)
+NO PRIMARY INDEX;</code></pre></div>
+        <div class="code-view"><pre><code class="language-sql">CREATE MULTISET TABLE weather_obs (
+  station_id       CHAR(4)       NOT NULL,
+  observation_ts   TIMESTAMP(0)  NOT NULL,
+  temperature_c    DECIMAL(5,1),
+  wind_speed_kts   SMALLINT,
+  wind_direction   SMALLINT,
+  visibility_m     INTEGER,
+  precipitation_mm DECIMAL(6,2),
+  pressure_hpa     DECIMAL(7,1),
+  conditions       VARCHAR(10),
+  ingest_ts        TIMESTAMP(0)  DEFAULT CURRENT_TIMESTAMP(0)
+) PRIMARY INDEX (station_id, observation_ts);</code></pre></div>
+        <div class="code-view"><pre><code class="language-sql">-- Path-filtered NOS query: reads only the current-hour partition
+SELECT station_id,
+       CAST(TRIM(observation_ts) AS TIMESTAMP(0) FORMAT 'YYYY-MM-DDBHH:MI:SS') AS obs_ts,
+       CAST(TRIM(temperature_c) AS DECIMAL(5,1)) AS temp_c,
+       conditions
+FROM demo_db.weather_nos_ft
+WHERE $var3 = '2026-06-19'
+  AND $var4 = '14'
+ORDER BY obs_ts DESC;
+
+-- Aggregates across all accumulated hours
+SELECT station_id,
+       COUNT(*)            AS obs_count,
+       AVG(temperature_c)  AS avg_temp_c,
+       MAX(wind_speed_kts) AS max_wind_kts
+FROM demo_db.weather_obs
+GROUP BY station_id
+ORDER BY station_id;</code></pre></div>
+      </div>
+    </div>
+
+    <div class="subhead" style="margin-top:44px;">What to expect</div>
+    <div class="terminal">
+      <div class="terminal-head">
+        <span class="dot" style="background:#FF5F57"></span><span class="dot" style="background:#FEBC2E"></span><span class="dot" style="background:#28C840"></span>
+        <span class="label">bash demos/03-kafka-csv-minio/run.sh</span>
+      </div>
+      <pre><span class="term-head2">======================================================
+  Demo 3: Kafka → Kafka Connect → MinIO → NOS
+  Current partition:  2026-06-19/14
+  Mode:               ACCUMULATE (add to existing)
+======================================================</span>
+
+<span class="term-hl">── 1/6  Preparing — clean up prior connector and topic</span>
+<span class="term-hl">── 2/6  Registering Kafka Connect S3 Sink connector</span>
+      Waiting for connector+task to start......... <span class="term-ok">RUNNING</span>
+
+<span class="term-hl">── 3/6  Publishing weather batches to Kafka</span>
+      3 messages → flush.size=1 → 3 files in 2026-06-19/14/
+
+<span class="term-hl">── 4/6  Waiting for Kafka Connect to flush files to MinIO</span>
+      [15s] Files in MinIO: 3 / 3
+
+<span class="term-hl">── 5/6  NOS: list objects, create FOREIGN TABLE, count rows</span>
+<span class="term-hl">── 6/6  Incremental load: partition 2026-06-19/14 → weather_obs</span>
+
+======================================================
+  Demo 3 complete!
+  3 Kafka messages → MinIO → NOS FOREIGN TABLE → <span class="term-ok">90 new rows</span> in weather_obs
+  (accumulates across runs; prior hours are preserved)
+======================================================</pre>
+    </div>
+
+    <div class="note" style="margin-top:24px; --node-c:var(--c-iceberg);">
+      <strong>NOS asks "can I read this file?" — it doesn't ask "can I trust this table?"</strong> NOS is a
+      stateless, schema-at-query-time read of raw files: no ACID, no caching, no warm-up benefit between
+      queries, max 4 concurrent reads. That's exactly right for a landing zone you don't own the lifecycle of
+      — which is why this demo is a good fit, and why Demo&nbsp;04 reaches for Open Table Format instead once
+      the requirement shifts to a governed, multi-engine table. See the comparison at the bottom of this guide.
+    </div>
+
+  </div>
+</section>
+<section id="demo04">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="subhead">Demo 04 · Open lakehouse</div>
+      <h2><span class="demo-id" style="margin-right:12px;">04</span>Kafka → Flink → Iceberg → Teradata OTF</h2>
+      <p class="sub">Flink SQL streams ADS-B messages straight into an Apache Iceberg table — Parquet on MinIO,
+      metadata in Hive Metastore. Teradata queries the <em>live</em> table through a <code>DATALAKE</code> object,
+      no ETL, no COPY, no TPT. New rows appear within ~30 seconds of ingestion.</p>
+      <div style="display:flex; gap:8px; margin-top:16px; flex-wrap:wrap;">
+        <span class="tag" style="--node-c:var(--c-flink);"><span class="sw" style="background:var(--c-flink)"></span>Latency tier: Near real-time (30s checkpoint)</span>
+        <span class="tag" style="--node-c:var(--c-iceberg);"><span class="sw" style="background:var(--c-iceberg)"></span>Feature: Open Table Format / DATALAKE</span>
+      </div>
+    </div>
+
+    <div class="card" style="padding:24px 24px 16px; overflow-x:auto; margin-top:28px;">
+      <svg class="flow-svg" viewBox="0 0 1180 130" style="width:100%; min-width:900px; height:auto;">
+        <defs>
+  <marker id="arrow-d04" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="var(--border-strong)"></path>
+  </marker>
+  <marker id="arrowHl-d04" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="var(--primary)"></path>
+  </marker>
+</defs>
+<g class="flow-node">
+  <rect x="10" y="45" width="165" height="50" style="stroke:var(--c-producer)"></rect>
+  <text x="92.5" y="67.0" text-anchor="middle" class="lbl">adsb_producer.py</text>
+  <text x="92.5" y="83.0" text-anchor="middle" class="sub">continuous</text>
+</g>
+<path class="flow-edge" d="M175,70 L210,70" marker-end="url(#arrow-d04)"></path>
+<g class="flow-node">
+  <rect x="210" y="45" width="140" height="50" style="stroke:var(--c-kafka)"></rect>
+  <text x="280.0" y="67.0" text-anchor="middle" class="lbl">Kafka topic</text>
+  <text x="280.0" y="83.0" text-anchor="middle" class="sub">adsb-positions</text>
+</g>
+<path class="flow-edge" d="M350,70 L385,70" marker-end="url(#arrow-d04)"></path>
+<g class="flow-node">
+  <rect x="385" y="45" width="180" height="50" style="stroke:var(--c-flink)"></rect>
+  <text x="475.0" y="67.0" text-anchor="middle" class="lbl">Flink SQL</text>
+  <text x="475.0" y="83.0" text-anchor="middle" class="sub">checkpoint every 30s</text>
+</g>
+<path class="flow-edge active" d="M565,70 L655,70" marker-end="url(#arrowHl-d04)"></path>
+<text x="610" y="60" text-anchor="middle" class="sub" fill="var(--primary)">commit</text>
+<g class="flow-node">
+  <rect x="655" y="45" width="210" height="50" style="stroke:var(--c-iceberg)"></rect>
+  <text x="760.0" y="67.0" text-anchor="middle" class="lbl">Iceberg table</text>
+  <text x="760.0" y="83.0" text-anchor="middle" class="sub">Parquet on MinIO · HMS catalog</text>
+</g>
+<path class="flow-edge active" d="M865,70 L955,70" marker-end="url(#arrowHl-d04)"></path>
+<text x="910" y="60" text-anchor="middle" class="sub" fill="var(--primary)">OTF</text>
+<g class="flow-node hl">
+  <rect x="955" y="45" width="195" height="50" style="stroke:var(--c-teradata)"></rect>
+  <text x="1052.5" y="67.0" text-anchor="middle" class="lbl">DATALAKE</text>
+  <text x="1052.5" y="83.0" text-anchor="middle" class="sub">Teradata · live query</text>
+</g>
+      </svg>
+    </div>
+    <div class="cols2" style="margin-top:40px; align-items:start;">
+      <div>
+        <div class="subhead">What it demonstrates</div>
+        <ul class="bullets">
+          <li>Flink SQL checkpointing as the Iceberg commit mechanism: each 30-second checkpoint atomically
+            commits a new Iceberg snapshot — and Teradata sees it on the very next SELECT.</li>
+          <li>The <strong>DATALAKE</strong> object — Teradata's OTF interface to an Iceberg catalog; one DDL
+            statement connects Hive Metastore + MinIO, after which tables are queried via
+            <code>&lt;datalake&gt;.&lt;namespace&gt;.&lt;table&gt;</code> 3-part notation.</li>
+          <li><code>TD_SNAPSHOTS()</code> table function lists committed Iceberg snapshots — the growing
+            history as streaming continues.</li>
+          <li>The open-lakehouse pattern: Flink writes Parquet data files; Teradata, Spark, and Trino can all
+            query the same files simultaneously through the Iceberg catalog.</li>
+          <li>Iceberg partitioning by <code>pos_date</code> (daily) — partition pruning carries through to
+            Teradata OTF queries.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="subhead">How to run</div>
+        <div class="codepanel">
+          <div class="codepanel-head"><span class="fname">terminal</span></div>
+          <div class="codepanel-body"><pre><code class="language-bash"># Continuous streaming (default); press Ctrl+C to stop
+bash demos/04-kafka-flink-iceberg/run.sh
+
+# Bounded mode — 200 messages; exits automatically
+bash demos/04-kafka-flink-iceberg/run.sh --bounded</code></pre></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="subhead" style="margin-top:44px;">How it works</div>
+    <div class="steps">
+      <div class="step" style="--node-c:var(--c-teradata)">
+        <div class="step-num">1</div>
+        <h4>Reset</h4>
+        <p>Flink SQL client drops the Iceberg table (removing Parquet + metadata from MinIO); the DATALAKE is
+        dropped from Teradata; the Kafka topic is deleted and recreated.</p>
+      </div>
+      <div class="step" style="--node-c:var(--c-teradata)">
+        <div class="step-num">2</div>
+        <h4>DATALAKE setup, once per session</h4>
+        <p><code>CREATE DATALAKE demo_iceberg</code>: <code>CATALOG_TYPE='hive'</code>, HMS at
+        <code>HOST_IP:9083</code>, <code>STORAGE_ENDPOINT=http://HOST_IP:9000</code> (MinIO, path-style, no SSL).</p>
+      </div>
+      <div class="step" style="--node-c:var(--c-flink)">
+        <div class="step-num">3</div>
+        <h4>Flink streaming INSERT</h4>
+        <p>Creates a Hive catalog (Iceberg Flink connector → Hive Metastore); <code>CAST</code>s +
+        <code>TO_TIMESTAMP()</code> shape rows into Iceberg Parquet files on MinIO. Checkpoint every 30s
+        (<code>EXACTLY_ONCE</code>) → one atomic Iceberg snapshot per checkpoint. The SQL client exits after
+        submitting; the job keeps running in the Flink cluster.</p>
+      </div>
+      <div class="step" style="--node-c:var(--c-teradata)">
+        <div class="step-num">4</div>
+        <h4>Monitoring loop</h4>
+        <p>Every 30 seconds: <code>SELECT COUNT(*) + MAX(ts) FROM demo_iceberg.demo.adsb_positions</code> from
+        Teradata, via OTF.</p>
+      </div>
+      <div class="step" style="--node-c:var(--c-flink)">
+        <div class="step-num">5</div>
+        <h4>Graceful shutdown (Ctrl+C)</h4>
+        <p>Producer killed → 35s wait (slightly longer than the checkpoint interval) → final checkpoint commits
+        the last rows → Flink job cancelled via REST (<code>PATCH /jobs/{id}?mode=cancel</code>).</p>
+      </div>
+    </div>
+
+    <div class="subhead" style="margin-top:44px;">Key OTF design rules</div>
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>Rule</th><th>Detail</th></tr>
+        <tr><td>DATALAKE, not FOREIGN TABLE</td><td>Iceberg tables are queried via <code>CREATE DATALAKE</code> with <code>CATALOG_TYPE('hive')</code> — a different object family from NOS.</td></tr>
+        <tr><td><code>HOST_IP</code> everywhere</td><td>Teradata is external to Docker; <code>CATALOG_LOCATION</code> and <code>STORAGE_ENDPOINT</code> need the host's real IP from <code>.env</code>, not container hostnames.</td></tr>
+        <tr><td><code>S3_PATH_STYLE_ACCESS('true')</code></td><td>Required for MinIO — it uses path-style S3 URLs, not virtual-hosted-style.</td></tr>
+        <tr><td><code>S3_SSL_ENABLED('false')</code></td><td>Required — MinIO in this stack runs plain HTTP.</td></tr>
+        <tr><td>Namespace creation</td><td>Created by Flink (<code>CREATE DATABASE IF NOT EXISTS</code>), not Teradata — <code>CREATE DATABASE via DATALAKE</code> from Teradata raises error 7825.</td></tr>
+        <tr><td>Checkpoint-boundary visibility</td><td>Queries between checkpoints return the previous snapshot's data — rows are visible in batches of ~30s, not row-by-row.</td></tr>
+      </table>
+    </div>
+
+    <div class="subhead" style="margin-top:44px;">DATALAKE DDL &amp; queries</div>
+    <div class="codepanel" id="cp-demo04">
+      <div class="codepanel-head">
+        <div class="codepanel-tabs">
+          <button class="codepanel-tab active" onclick="showTab('cp-demo04',0)">CREATE DATALAKE</button>
+          <button class="codepanel-tab" onclick="showTab('cp-demo04',1)">queries</button>
+          <button class="codepanel-tab" onclick="showTab('cp-demo04',2)">Flink SQL</button>
+        </div>
+      </div>
+      <div class="codepanel-body">
+        <div class="code-view active"><pre><code class="language-sql">DATABASE demo_db;
+
+CREATE DATALAKE demo_iceberg
+  EXTERNAL SECURITY INVOKER TRUSTED CATALOG hms_catalog_auth,
+  EXTERNAL SECURITY INVOKER TRUSTED STORAGE minio_storage_auth
+USING
+  CATALOG_TYPE('hive')
+  CATALOG_LOCATION('thrift://&lt;HOST_IP&gt;:9083')
+  STORAGE_LOCATION('s3://iceberg/warehouse/')
+  STORAGE_ENDPOINT('http://&lt;HOST_IP&gt;:9000')
+  S3_PATH_STYLE_ACCESS('true')
+  STORAGE_REGION('us-east-1')
+  S3_SSL_ENABLED('false')
+TABLE FORMAT iceberg;</code></pre></div>
+        <div class="code-view"><pre><code class="language-sql">-- Explore the catalog
+HELP DATALAKE demo_iceberg;
+HELP TABLE demo_iceberg.demo.adsb_positions;
+
+-- Current snapshot (latest committed data)
+SELECT icao24, callsign, latitude, longitude, altitude, ts
+FROM demo_iceberg.demo.adsb_positions
+WHERE pos_date = '2026-06-22'
+ORDER BY ts DESC
+SAMPLE 20;
+
+-- Snapshot history — one row per checkpoint that committed data
+SELECT * FROM TD_SNAPSHOTS('demo_iceberg.demo.adsb_positions');
+
+-- Time travel
+SELECT COUNT(*) AS rows_at_snapshot
+FROM demo_iceberg.demo.adsb_positions
+FOR TIMESTAMP AS OF TIMESTAMP '2026-06-22 12:01:00';</code></pre></div>
+        <div class="code-view"><pre><code class="language-sql">-- flink/jobs/demo04/stream.sql (excerpt)
+CREATE CATALOG hive_catalog WITH (
+  'type'          = 'iceberg',
+  'catalog-type'  = 'hive',
+  'uri'           = 'thrift://hive-metastore:9083',
+  'warehouse'     = 's3a://iceberg/warehouse/'
+);
+
+CREATE TABLE IF NOT EXISTS hive_catalog.demo.adsb_positions ( ... )
+WITH ('write.format.default' = 'parquet');
+
+SET 'execution.checkpointing.interval' = '30s';
+
+INSERT INTO hive_catalog.demo.adsb_positions
+SELECT icao24, callsign, CAST(latitude AS DECIMAL(9,6)), ...,
+       TO_TIMESTAMP(ts), pos_date
+FROM kafka_adsb_source;</code></pre></div>
+      </div>
+    </div>
+
+    <div class="subhead" style="margin-top:44px;">What to expect</div>
+    <div class="terminal">
+      <div class="terminal-head">
+        <span class="dot" style="background:#FF5F57"></span><span class="dot" style="background:#FEBC2E"></span><span class="dot" style="background:#28C840"></span>
+        <span class="label">bash demos/04-kafka-flink-iceberg/run.sh</span>
+      </div>
+      <pre><span class="term-head2">======================================================
+  Demo 4: Kafka → Flink → Iceberg → Teradata OTF
+  Mode:                     CONTINUOUS (Ctrl+C to stop)
+======================================================</span>
+
+<span class="term-hl">── 1/4  Resetting prior state</span>
+<span class="term-hl">── 2/4  Creating DATALAKE object in Teradata</span>
+<span class="term-hl">── 3/4  Starting Flink job and producer</span>
+      Flink job ID: 8f1a2c9e...
+      Starting producer (continuous, 1s interval, 10 aircraft)...
+
+  Streaming — rows visible in Teradata every ~30s (one Iceberg checkpoint).
+
+  [12:10:35 UTC]  <span class="term-ok">STATUS rows=300 latest=2026-06-22 12:10:34.812</span>
+  [12:11:05 UTC]  <span class="term-ok">STATUS rows=600 latest=2026-06-22 12:11:04.798</span>
+  ...
+
+^C
+<span class="term-dim">── Waiting 35s for final Iceberg checkpoint to commit...
+── Cancelling Flink job 8f1a2c9e...</span>
+
+<span class="term-hl">── 4/4  Final snapshot</span>
+  rows           snapshots   aircraft_seen   latest_ts
+  -----------    ---------   -------------   -------------------------
+  <span class="term-ok">930</span>            <span class="term-ok">31</span>          10              2026-06-22 12:15:34.812</pre>
+    </div>
+
+    <div class="note" style="margin-top:24px; --node-c:var(--c-iceberg);">
+      <strong>OTF asks "can I trust this table?"</strong> — the opposite question from NOS in Demo&nbsp;03.
+      Iceberg's manifest-list → manifest → data-file metadata tree gives Teradata ACID reads, time travel, and
+      schema evolution against the same Parquet files Flink, Spark, or Trino are writing — without anyone
+      copying data between engines. Teradata's native C++ OTF path adds a Snapshot Cache and NVMe data cache on
+      top of the open Iceberg spec, so repeat queries get faster than a cold NOS scan ever would.
+    </div>
+
+  </div>
+</section>
+<section id="demo05">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="subhead">Demo 05 · Reverse enrichment</div>
+      <h2><span class="demo-id" style="margin-right:12px;">05</span>Flink Lookup Join ← Teradata</h2>
+      <p class="sub">The ADS-B stream carries only ICAO24 identifiers. Teradata holds the master
+      <code>aircraft_ref</code> table — registration, type, operator, country. Flink enriches each message
+      in-flight with a <strong>JDBC Lookup Join</strong> against Teradata, then writes the enriched rows to
+      Iceberg. This reverses Demos 02–04: instead of pushing data into Teradata, Flink pulls reference data
+      <em>from</em> it.</p>
+      <div style="display:flex; gap:8px; margin-top:16px; flex-wrap:wrap;">
+        <span class="tag" style="--node-c:var(--c-flink);"><span class="sw" style="background:var(--c-flink)"></span>Latency tier: Near real-time (30s checkpoint)</span>
+        <span class="tag" style="--node-c:var(--c-teradata);"><span class="sw" style="background:var(--c-teradata)"></span>Feature: Teradata as enrichment source</span>
+      </div>
+    </div>
+
+    <div class="card" style="padding:24px 24px 16px; overflow-x:auto; margin-top:28px;">
+      <svg class="flow-svg" viewBox="0 0 1180 230" style="width:100%; min-width:900px; height:auto;">
+        <defs>
+  <marker id="arrow-d05" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="var(--border-strong)"></path>
+  </marker>
+  <marker id="arrowHl-d05" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="var(--primary)"></path>
+  </marker>
+</defs>
+<g class="flow-node">
+  <rect x="10" y="45" width="165" height="50" style="stroke:var(--c-producer)"></rect>
+  <text x="92.5" y="67.0" text-anchor="middle" class="lbl">adsb_producer.py</text>
+  <text x="92.5" y="83.0" text-anchor="middle" class="sub">continuous</text>
+</g>
+<path class="flow-edge" d="M175,70 L210,70" marker-end="url(#arrow-d05)"></path>
+<g class="flow-node">
+  <rect x="210" y="45" width="140" height="50" style="stroke:var(--c-kafka)"></rect>
+  <text x="280.0" y="67.0" text-anchor="middle" class="lbl">Kafka topic</text>
+  <text x="280.0" y="83.0" text-anchor="middle" class="sub">adsb-positions</text>
+</g>
+<path class="flow-edge" d="M350,70 L385,70" marker-end="url(#arrow-d05)"></path>
+<g class="flow-node">
+  <rect x="385" y="45" width="180" height="50" style="stroke:var(--c-flink)"></rect>
+  <text x="475.0" y="67.0" text-anchor="middle" class="lbl">Flink</text>
+  <text x="475.0" y="83.0" text-anchor="middle" class="sub">lookup join</text>
+</g>
+<path class="flow-edge active" d="M565,70 L655,70" marker-end="url(#arrowHl-d05)"></path>
+<text x="610" y="60" text-anchor="middle" class="sub" fill="var(--primary)">commit</text>
+<g class="flow-node">
+  <rect x="655" y="45" width="210" height="50" style="stroke:var(--c-iceberg)"></rect>
+  <text x="760.0" y="67.0" text-anchor="middle" class="lbl">Iceberg table</text>
+  <text x="760.0" y="83.0" text-anchor="middle" class="sub">enriched_positions</text>
+</g>
+<path class="flow-edge active" d="M865,70 L955,70" marker-end="url(#arrowHl-d05)"></path>
+<text x="910" y="60" text-anchor="middle" class="sub" fill="var(--primary)">OTF</text>
+<g class="flow-node hl">
+  <rect x="955" y="45" width="195" height="50" style="stroke:var(--c-teradata)"></rect>
+  <text x="1052.5" y="67.0" text-anchor="middle" class="lbl">DATALAKE</text>
+  <text x="1052.5" y="83.0" text-anchor="middle" class="sub">Teradata · live query</text>
+</g>
+<g class="flow-node">
+  <rect x="385" y="150" width="180" height="50" style="stroke:var(--c-teradata)"></rect>
+  <text x="475.0" y="172.0" text-anchor="middle" class="lbl">aircraft_ref</text>
+  <text x="475.0" y="188.0" text-anchor="middle" class="sub">Teradata table</text>
+</g>
+<path class="flow-edge active" d="M475,150 L475,95" marker-end="url(#arrowHl-d05)"></path>
+<text x="497" y="121" text-anchor="start" class="sub" fill="var(--c-teradata)">lookup join</text>
+<text x="497" y="134" text-anchor="start" class="sub" fill="var(--c-teradata)">cached 30s</text>
+      </svg>
+    </div>
+    <div class="cols2" style="margin-top:40px; align-items:start;">
+      <div>
+        <div class="subhead">What it demonstrates</div>
+        <ul class="bullets">
+          <li><strong>Teradata as an enrichment source</strong> — the JDBC Lookup Join runs
+            <code>SELECT … WHERE icao24 = ?</code> against Teradata via the <code>terajdbc</code> driver; results
+            are cached per a configured TTL, keeping Teradata load minimal.</li>
+          <li><strong>Cache TTL and live invalidation</strong> — with a 30-second TTL, an <code>UPDATE</code> to
+            <code>aircraft_ref</code> propagates into newly enriched Iceberg rows within one checkpoint window.</li>
+          <li><strong>LEFT JOIN graceful degradation</strong> — ICAO24 codes with no matching reference row get
+            <code>UNKNOWN</code> defaults instead of being silently dropped.</li>
+          <li><strong>Teradata as both source and destination</strong> — <code>aircraft_ref</code> is the lookup
+            source; <code>enriched_positions</code> in Iceberg is the OTF query target back in Teradata.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="subhead">How to run</div>
+        <div class="codepanel">
+          <div class="codepanel-head"><span class="fname">terminal</span></div>
+          <div class="codepanel-body"><pre><code class="language-bash"># Continuous (default) — press Ctrl+C to stop
+bash demos/05-flink-td-enrich/run.sh
+
+# Bounded mode — 200 messages; exits automatically
+bash demos/05-flink-td-enrich/run.sh --bounded</code></pre></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="subhead" style="margin-top:44px;">aircraft_ref reference table</div>
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>icao24</th><th>registration</th><th>type</th><th>operator</th><th>country</th></tr>
+        <tr><td><code>34618a</code></td><td>EC-MXV</td><td>A330-200</td><td>Iberia</td><td>Spain</td></tr>
+        <tr><td><code>3950f2</code></td><td>F-HTYB</td><td>A350-900</td><td>Air France</td><td>France</td></tr>
+        <tr><td><code>3c4b0f</code></td><td>D-AIHE</td><td>A340-600</td><td>Lufthansa</td><td>Germany</td></tr>
+        <tr><td><code>3f7062</code></td><td>EI-FTP</td><td>B737-800</td><td>Ryanair</td><td>Ireland</td></tr>
+        <tr><td><code>400a5b</code></td><td>G-YMML</td><td>B777-200</td><td>British Airways</td><td>UK</td></tr>
+        <tr><td colspan="5" style="color:var(--text-faint); font-family:var(--font-mono); font-size:12.5px;">+ 5 more (TUI, Virgin Atlantic, KLM, Swiss, Aer Lingus)</td></tr>
+      </table>
+    </div>
+
+    <div class="subhead" style="margin-top:32px;">Flink SQL key excerpts</div>
+    <div class="codepanel" id="cp-demo05">
+      <div class="codepanel-head">
+        <div class="codepanel-tabs">
+          <button class="codepanel-tab active" onclick="showTab('cp-demo05',0)">Lookup table + join</button>
+          <button class="codepanel-tab" onclick="showTab('cp-demo05',1)">cache invalidation</button>
+          <button class="codepanel-tab" onclick="showTab('cp-demo05',2)">summary query</button>
+        </div>
+      </div>
+      <div class="codepanel-body">
+        <div class="code-view active"><pre><code class="language-sql">-- Processing-time attribute — required for lookup join temporal syntax
+CREATE TEMPORARY TABLE kafka_adsb (
+    icao24    STRING,
+    ...
+    proc_time AS PROCTIME()
+) WITH ('connector' = 'kafka', ...);
+
+-- Teradata JDBC lookup table
+CREATE TEMPORARY TABLE aircraft_ref (
+    icao24        STRING,
+    registration  STRING,
+    aircraft_type STRING,
+    operator      STRING,
+    country       STRING,
+    PRIMARY KEY (icao24) NOT ENFORCED
+) WITH (
+    'connector'                                = 'jdbc',
+    'url'                                      = 'jdbc:teradata://&lt;TD_HOST&gt;/DATABASE=demo_db,...',
+    'table-name'                               = 'aircraft_ref',
+    'lookup.cache'                             = 'PARTIAL',
+    'lookup.partial-cache.max-rows'            = '10000',
+    'lookup.partial-cache.expire-after-write'  = '30s'
+);
+
+-- Temporal lookup join
+INSERT INTO enriched_positions
+SELECT a.icao24, ..., r.registration, r.aircraft_type, r.operator, r.country
+FROM kafka_adsb a
+LEFT JOIN aircraft_ref FOR SYSTEM_TIME AS OF a.proc_time AS r
+    ON a.icao24 = r.icao24;</code></pre></div>
+        <div class="code-view"><pre><code class="language-sql">-- 1. Observe Ryanair rows in Teradata OTF showing operator='Ryanair'
+SELECT icao24, operator FROM demo_iceberg.demo.enriched_positions
+WHERE icao24 = '3f7062' ORDER BY ts DESC SAMPLE 3;
+
+-- 2. Update the reference table in Teradata
+UPDATE demo_db.aircraft_ref WHERE icao24 = '3f7062'
+SET operator = 'Ryanair DAC';
+
+-- 3. Wait ~35s (cache TTL expires; next Kafka messages re-query Teradata)
+
+-- 4. New enriched rows show the updated operator
+SELECT icao24, operator, ts FROM demo_iceberg.demo.enriched_positions
+WHERE icao24 = '3f7062' ORDER BY ts DESC SAMPLE 5;
+-- operator transitions from 'Ryanair' → 'Ryanair DAC' at the cache boundary</code></pre></div>
+        <div class="code-view"><pre><code class="language-sql">SELECT
+    TRIM(icao24)        AS icao24,
+    TRIM(callsign)      AS callsign,
+    COUNT(*)            AS positions,
+    MAX(registration)   AS registration,
+    MAX(aircraft_type)  AS ac_type,
+    MAX(operator)       AS operator,
+    MAX(country)        AS country
+FROM demo_iceberg.demo.enriched_positions
+GROUP BY 1, 2
+ORDER BY 1;</code></pre></div>
+      </div>
+    </div>
+
+    <div class="cols2" style="margin-top:32px; align-items:start;">
+      <div class="card" style="--node-c:var(--c-ok);">
+        <div class="subhead" style="margin-top:0;">PARTIAL vs FULL cache</div>
+        <p style="font-size:14px;">Always <code>PARTIAL</code>. <code>FULL</code> mode loads the entire
+        dimension table into Flink heap before processing starts — fine for 10 rows in this demo, an OOM
+        guarantee for a production dimension table with millions of rows. <code>PARTIAL</code> caches only the
+        keys that have actually appeared in the stream.</p>
+      </div>
+      <div class="card" style="--node-c:var(--c-warn);">
+        <div class="subhead" style="margin-top:0;">Why LEFT, never INNER</div>
+        <p style="font-size:14px;">With <code>LEFT JOIN</code>, an unmatched ICAO24 passes through with null
+        enrichment — visible and filterable downstream. With <code>INNER JOIN</code> it's silently dropped.
+        In a streaming pipeline, silent data loss is strictly worse than a null field.</p>
+      </div>
+    </div>
+
+    <div class="subhead" style="margin-top:44px;">What to expect</div>
+    <div class="terminal">
+      <div class="terminal-head">
+        <span class="dot" style="background:#FF5F57"></span><span class="dot" style="background:#FEBC2E"></span><span class="dot" style="background:#28C840"></span>
+        <span class="label">bash demos/05-flink-td-enrich/run.sh</span>
+      </div>
+      <pre><span class="term-head2">======================================================
+  Demo 5: Flink Lookup Join → Teradata enrichment
+  Reference table:          demo_db.aircraft_ref
+  Mode:                     CONTINUOUS (Ctrl+C to stop)
+======================================================</span>
+
+<span class="term-hl">── 1/6  Resetting prior state</span>
+<span class="term-hl">── 2/6  Setting up Teradata reference table</span>
+      Creating demo_db.aircraft_ref (10 aircraft)...
+<span class="term-hl">── 3/6  Ensuring DATALAKE object is present</span>
+<span class="term-hl">── 4/6  Starting Flink lookup-join streaming job</span>
+
+<span class="term-hl">── 5/6  Streaming — press Ctrl+C to stop</span>
+  Enriched rows visible in Teradata every ~30s (one Iceberg checkpoint).
+
+  DEMO TIP — live cache invalidation:
+    UPDATE demo_db.aircraft_ref WHERE icao24='3f7062'
+    SET operator='Ryanair DAC';
+
+  [12:20:35 UTC]  <span class="term-ok">STATUS rows=300 aircraft=10 latest=2026-06-22 12:20:34.812</span>
+  [12:21:05 UTC]  <span class="term-ok">STATUS rows=600 aircraft=10 latest=2026-06-22 12:21:04.798</span>
+
+^C
+<span class="term-hl">── 6/6  Final verification</span>
+  icao24   callsign   positions   registration   ac_type    operator       country
+  3f7062   RYR4521    93          EI-FTP         B737-800   <span class="term-ok">Ryanair DAC</span>    Ireland</pre>
+    </div>
+
+    <div class="note" style="margin-top:24px;">
+      <strong>Benchmark for this pattern:</strong> a global bank used the same lookup-join shape — enriching
+      real-time clickstream events with account risk profiles held in Teradata — to cut fraud-detection latency
+      from <strong>37 hours to 12 minutes</strong> (185× faster).
+    </div>
+
+  </div>
+</section>
+<section id="compare">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="subhead">Compare &amp; choose</div>
+      <h2>Same destination, six different roads in.</h2>
+      <p class="sub">Every demo lands data in Teradata Vantage. What differs is the latency tier, the operator
+      doing the work, and how much of the journey happens before Teradata ever sees a row.</p>
+    </div>
+
+    <div class="tbl-wrap">
+      <table>
+        <tr>
+          <th>Demo</th><th>Ingestion method</th><th>Latency tier</th><th>Key feature</th><th>Best for</th>
+        </tr>
+        <tr>
+          <td><span class="tag" style="border-color:transparent;"><span class="sw" style="background:var(--c-tpt)"></span>01</span></td>
+          <td>BTEQ <code>DEFERRED BY NAME</code></td>
+          <td>Batch (file load)</td>
+          <td>Avro container → <code>DATASET</code>, schema evolution</td>
+          <td>Ad-hoc, 1–2 files, interactive</td>
+        </tr>
+        <tr>
+          <td><span class="tag" style="border-color:transparent;"><span class="sw" style="background:var(--c-tpt)"></span>01A</span></td>
+          <td>TPT STREAM + DataConnector</td>
+          <td>Batch (file load)</td>
+          <td>Manifest-driven, restartable, N files / job</td>
+          <td>Automated, bulk, SLA-bound loads</td>
+        </tr>
+        <tr>
+          <td><span class="tag" style="border-color:transparent;"><span class="sw" style="background:var(--c-kafka)"></span>02</span></td>
+          <td>TPT STREAM + Kafka Access Module</td>
+          <td>Near real-time (200ms–5s)</td>
+          <td>Continuous Kafka → Teradata, <code>tbuild -l</code></td>
+          <td>High-frequency transactional tables</td>
+        </tr>
+        <tr>
+          <td><span class="tag" style="border-color:transparent;"><span class="sw" style="background:var(--c-minio)"></span>03</span></td>
+          <td>Kafka Connect S3 Sink + NOS</td>
+          <td>Microbatch (~5 min)</td>
+          <td><code>PATHPATTERN</code> partition pruning on raw files</td>
+          <td>Landing zones you don't own the lifecycle of</td>
+        </tr>
+        <tr>
+          <td><span class="tag" style="border-color:transparent;"><span class="sw" style="background:var(--c-iceberg)"></span>04</span></td>
+          <td>Flink → Iceberg → OTF</td>
+          <td>Near real-time (30s checkpoint)</td>
+          <td>ACID, time travel, multi-engine table</td>
+          <td>Governed shared data products</td>
+        </tr>
+        <tr>
+          <td><span class="tag" style="border-color:transparent;"><span class="sw" style="background:var(--c-flink)"></span>05</span></td>
+          <td>Flink JDBC Lookup Join</td>
+          <td>Near real-time (30s checkpoint)</td>
+          <td>Teradata as a streaming enrichment source</td>
+          <td>In-flight enrichment from slow-changing dimensions</td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="subhead" style="margin-top:56px;">BFS vs NOS vs OTF — the three storage tiers behind Demos 02–05</div>
+    <p style="max-width:760px;">Demo&nbsp;02 writes straight into Teradata's own block storage (BFS). Demo&nbsp;03
+    reads files NOS doesn't own or manage. Demos&nbsp;04–05 read a governed Iceberg table through OTF. These
+    aren't competing options — they're complementary tiers, and most real architectures use all three.</p>
+
+    <div class="grid cols3" style="margin-top:20px;">
+      <div class="card" style="--node-c:var(--c-teradata);">
+        <span class="tag" style="--node-c:var(--c-teradata); border-color:transparent; padding-left:0;"><span class="sw" style="background:var(--c-teradata)"></span>BFS</span>
+        <h4 style="margin-top:10px; font-size:16px;">Data you <em>serve</em> at scale</h4>
+        <div class="tbl-wrap" style="margin-top:10px; font-size:12.5px;">
+          <table>
+            <tr><td style="color:var(--text-faint);">Latency</td><td><strong>Sub-second</strong> (&lt;100ms)</td></tr>
+            <tr><td style="color:var(--text-faint);">Cost</td><td>Highest per TB</td></tr>
+            <tr><td style="color:var(--text-faint);">Format</td><td>Native Teradata</td></tr>
+          </table>
+        </div>
+        <p style="font-size:13px; margin-top:10px;">Full MPP parallelism, thousands of concurrent users.
+        Mission-critical, high-concurrency workloads with a real SLA.</p>
+      </div>
+      <div class="card" style="--node-c:var(--c-iceberg);">
+        <span class="tag" style="--node-c:var(--c-iceberg); border-color:transparent; padding-left:0;"><span class="sw" style="background:var(--c-iceberg)"></span>OTF</span>
+        <h4 style="margin-top:10px; font-size:16px;">Data you <em>share</em> across engines</h4>
+        <div class="tbl-wrap" style="margin-top:10px; font-size:12.5px;">
+          <table>
+            <tr><td style="color:var(--text-faint);">Latency</td><td><strong>Seconds</strong> (cache-accelerated)</td></tr>
+            <tr><td style="color:var(--text-faint);">Cost</td><td>Medium (object storage)</td></tr>
+            <tr><td style="color:var(--text-faint);">Format</td><td>Iceberg v2 / Delta Lake v3</td></tr>
+          </table>
+        </div>
+        <p style="font-size:13px; margin-top:10px;">ACID + time travel on object storage, readable by Teradata,
+        Spark, Trino, and Flink without replication. Teradata's strategic default for new data products.</p>
+      </div>
+      <div class="card" style="--node-c:var(--c-minio);">
+        <span class="tag" style="--node-c:var(--c-minio); border-color:transparent; padding-left:0;"><span class="sw" style="background:var(--c-minio)"></span>NOS</span>
+        <h4 style="margin-top:10px; font-size:16px;">Data you <em>consume</em> or archive</h4>
+        <div class="tbl-wrap" style="margin-top:10px; font-size:12.5px;">
+          <table>
+            <tr><td style="color:var(--text-faint);">Latency</td><td><strong>5–30 seconds</strong> (variable)</td></tr>
+            <tr><td style="color:var(--text-faint);">Cost</td><td>Lowest per TB</td></tr>
+            <tr><td style="color:var(--text-faint);">Format</td><td>Raw files (Parquet, CSV, JSON)</td></tr>
+          </table>
+        </div>
+        <p style="font-size:13px; margin-top:10px;">Stateless file scanning, no ACID, no caching between
+        queries. Right for raw external drops and cold archival via <code>WRITE_NOS</code>.</p>
+      </div>
+    </div>
+
+    <div class="subhead" style="margin-top:56px;">Further reading</div>
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>Doc</th><th>Covers</th></tr>
+        <tr><td><code>docs/setup.md</code></td><td>Full infrastructure setup, environment variables, service ports</td></tr>
+        <tr><td><code>docs/demo01-avro-blob.md</code></td><td>BTEQ DEFERRED BY NAME, AvroContainerSplit, DATASET schema design rules</td></tr>
+        <tr><td><code>docs/demo01a-avro-blob-tpt.md</code></td><td>TPT STREAM BLOB syntax, manifest format, checkpoint/restart</td></tr>
+        <tr><td><code>docs/demo02-kafka-tpt-stream.md</code></td><td>Kafka Access Module, <code>tbuild -l</code>, PPI target design</td></tr>
+        <tr><td><code>docs/demo03-kafka-csv-minio.md</code></td><td>Kafka Connect S3 Sink, NOS PATHPATTERN, incremental loads</td></tr>
+        <tr><td><code>docs/demo04-kafka-flink-iceberg.md</code></td><td>DATALAKE DDL, Flink checkpointing, <code>TD_SNAPSHOTS()</code></td></tr>
+        <tr><td><code>docs/demo05-flink-td-enrich.md</code></td><td>JDBC Lookup Join, custom Teradata Flink dialect, cache TTL</td></tr>
+        <tr><td>Teradata DATASET Data Type — B035-1198</td><td>Avro/CSV complex data type reference</td></tr>
+        <tr><td>Teradata Parallel Transporter Reference Guide — B035-2436</td><td>TPT operators, Access Modules, tbuild flags</td></tr>
+        <tr><td>TPT Kafka Access Module — B035-2447</td><td>Kafka Access Module configuration reference</td></tr>
+        <tr><td>Teradata Native Object Store Getting Started Guide — B035-2198</td><td>NOS / READ_NOS / WRITE_NOS reference</td></tr>
+      </table>
+    </div>
+
+  </div>
+</section>
+
+<footer class="site">
+  <p>teradata-streaming-demo &nbsp;·&nbsp; field guide, first pass &nbsp;·&nbsp; generated from the repo's own docs, scripts, and run output</p>
+</footer>
+
+  </div>
+</div>
+
+<script>
+hljs.configure({ ignoreUnescapedHTML: true });
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
+});
+
+// mobile nav toggle
+const navToggle = document.getElementById('navToggle');
+const sidenav = document.getElementById('sidenav');
+navToggle && navToggle.addEventListener('click', () => sidenav.classList.toggle('open'));
+document.querySelectorAll('.navlist a').forEach(a => a.addEventListener('click', () => sidenav.classList.remove('open')));
+
+// active section highlighting
+const navLinks = Array.from(document.querySelectorAll('[data-nav]'));
+const sections = navLinks.map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+const io = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if(entry.isIntersecting){
+      const id = '#' + entry.target.id;
+      navLinks.forEach(a => a.classList.toggle('active', a.getAttribute('href') === id));
+    }
+  });
+}, { rootMargin: '-20% 0px -70% 0px', threshold: 0 });
+sections.forEach(s => io.observe(s));
+
+// code panel tab switching
+function showTab(panelId, idx){
+  const panel = document.getElementById(panelId);
+  panel.querySelectorAll('.code-view').forEach((v,i) => v.classList.toggle('active', i===idx));
+  panel.parentElement.querySelectorAll('.codepanel-tab').forEach((t,i) => t.classList.toggle('active', i===idx));
+}
+</script>
+</body>
+</html>
