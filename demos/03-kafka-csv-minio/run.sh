@@ -125,11 +125,11 @@ for obj in resp.get("Contents", []):
 print(f"      Deleted {deleted} object(s) from MinIO.")
 PYEOF
   echo "      --fresh: dropping weather_nos_ft and purging all weather_obs rows"
-  bteq_run /tpt/scripts/demo03_nos_fresh.bteq
+  bteq_run /tpt/scripts/demo03/nos_fresh.bteq
 else
   # Only drop the FOREIGN TABLE; weather_obs rows from prior hours are preserved
   echo "      Dropping weather_nos_ft (weather_obs prior-hour rows preserved)"
-  bteq_run /tpt/scripts/demo03_nos_prepare.bteq
+  bteq_run /tpt/scripts/demo03/nos_prepare.bteq
 fi
 
 # ── Step 2 ─────────────────────────────────────────────────
@@ -219,14 +219,14 @@ echo "      A) NOSREAD_KEYS  — list files (expect $WEATHER_BATCHES .bin files 
 echo "      B) CREATE FOREIGN TABLE weather_nos_ft with PATHPATTERN"
 echo "      C) COUNT(*) over the full FOREIGN TABLE (all partitions)"
 echo ""
-bteq_run /tpt/scripts/demo03_nos_create.bteq
+bteq_run /tpt/scripts/demo03/nos_create.bteq
 
 # ── Step 6 ─────────────────────────────────────────────────
 step "6/6  Incremental load: partition $CURRENT_PARTITION → weather_obs"
 echo "      WHERE \$var3 = '${CURRENT_YEAR}-${CURRENT_MONTH}-${CURRENT_DAY}' AND \$var4 = '${CURRENT_HOUR}'"
 echo "      Prior hours in weather_obs are untouched."
 echo ""
-bteq_run /tpt/scripts/demo03_nos_load.bteq
+bteq_run /tpt/scripts/demo03/nos_load.bteq
 
 echo ""
 echo "======================================================"

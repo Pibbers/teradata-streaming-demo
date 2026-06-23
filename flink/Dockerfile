@@ -102,9 +102,9 @@ RUN curl -fsSL "${MAVEN}/com/google/guava/guava/27.0-jre/guava-27.0-jre.jar" \
 # Registers TeradataFactory via SPI so 'connector' = 'jdbc' accepts jdbc:teradata://
 # URLs. Compiled here from source against flink-connector-jdbc 3.3.0-1.20.
 # Uses ECJ 3.29.0 (runs on JRE 11, unlike ECJ 3.35+ which requires JRE 17).
-COPY jobs/TeradataDialectConverter.java /tmp/td-src/TeradataDialectConverter.java
-COPY jobs/TeradataDialect.java           /tmp/td-src/TeradataDialect.java
-COPY jobs/TeradataFactory.java           /tmp/td-src/TeradataFactory.java
+COPY dialect/TeradataDialectConverter.java /tmp/td-src/TeradataDialectConverter.java
+COPY dialect/TeradataDialect.java         /tmp/td-src/TeradataDialect.java
+COPY dialect/TeradataFactory.java         /tmp/td-src/TeradataFactory.java
 RUN apt-get update && apt-get install -y --no-install-recommends zip && rm -rf /var/lib/apt/lists/* && \
     curl -fsSL "https://repo1.maven.org/maven2/org/eclipse/jdt/ecj/3.29.0/ecj-3.29.0.jar" \
         -o /tmp/ecj.jar && \

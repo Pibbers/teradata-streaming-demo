@@ -66,7 +66,7 @@ echo "======================================================"
 step "1/3  Clearing TPT and Kafka state from any prior run"
 
 docker compose exec -T tpt bash /tpt/scripts/run_bteq.sh \
-  /tpt/scripts/demo02_prepare.bteq
+  /tpt/scripts/demo02/prepare.bteq
 
 docker compose exec -T tpt twbrmcp ttuuser 2>/dev/null || true
 
@@ -137,7 +137,7 @@ else
     wait "$TBUILD_PID" 2>/dev/null || true
     echo ""
     step "3/3  Final row count"
-    bteq_run /tpt/scripts/demo02_verify.bteq
+    bteq_run /tpt/scripts/demo02/verify.bteq
     echo ""
     echo "======================================================"
     echo "  Demo 2 complete!"
@@ -174,7 +174,7 @@ else
   while kill -0 "$TBUILD_PID" 2>/dev/null && kill -0 "$PRODUCER_PID" 2>/dev/null; do
     sleep 10
     echo -n "  [$(date -u +'%H:%M:%S UTC')]  "
-    bteq_run /tpt/scripts/demo02_status.bteq 2>/dev/null \
+    bteq_run /tpt/scripts/demo02/status.bteq 2>/dev/null \
       | grep "^STATUS" \
       || echo "?"
   done
@@ -184,7 +184,7 @@ fi
 
 # ── Step 3 (bounded only) ───────────────────────────────────
 step "3/3  Verifying rows in adsb_positions"
-bteq_run /tpt/scripts/demo02_verify.bteq
+bteq_run /tpt/scripts/demo02/verify.bteq
 
 echo ""
 echo "======================================================"

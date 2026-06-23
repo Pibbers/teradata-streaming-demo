@@ -14,7 +14,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BTEQ_SCRIPT="${SCRIPT_DIR}/setup_demo_tables.bteq"
+BTEQ_SCRIPT="${SCRIPT_DIR}/infra/setup_demo_tables.bteq"
 
 # Validate required variables
 for var in TD_HOST TD_USER TD_PASSWORD TD_DATABASE HOST_IP MINIO_ROOT_USER MINIO_ROOT_PASSWORD; do

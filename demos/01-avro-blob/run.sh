@@ -49,19 +49,19 @@ python3 kafka/producers/generate_product_avro.py
 
 # ── Step 2 ─────────────────────────────────────────────────
 step "2/4  Clearing staging tables (TPT LOAD requires empty target)"
-run_bteq /tpt/scripts/demo01_prepare.bteq
+run_bteq /tpt/scripts/demo01/prepare.bteq
 
 # ── Step 3 ─────────────────────────────────────────────────
 step "3/4  Loading Avro files into Teradata (BTEQ DEFERRED BY NAME)"
 echo "      → product_v1.avro (schema v1: 5 fields)"
-run_bteq /tpt/scripts/demo01_load_v1.bteq
+run_bteq /tpt/scripts/demo01/load_v1.bteq
 
 echo "      → product_v2.avro (schema v2: 8 fields)"
-run_bteq /tpt/scripts/demo01_load_v2.bteq
+run_bteq /tpt/scripts/demo01/load_v2.bteq
 
 # ── Step 4 ─────────────────────────────────────────────────
 step "4/4  Decoding BLOBs into DATASET column and verifying"
-run_bteq /tpt/scripts/demo01_decode.bteq
+run_bteq /tpt/scripts/demo01/decode.bteq
 
 echo ""
 echo "======================================================"

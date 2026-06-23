@@ -78,10 +78,10 @@ echo "======================================================"
 step "1/4  Resetting prior state"
 
 echo "      Dropping Iceberg table via Flink SQL (removes Parquet files from MinIO)..."
-flink_sql /opt/flink/jobs/demo04_drop.sql || true
+flink_sql /opt/flink/jobs/demo04/drop.sql || true
 
 echo "      Dropping DATALAKE from Teradata..."
-bteq_run /tpt/scripts/demo04_datalake_drop.bteq || true
+bteq_run /tpt/scripts/demo04/datalake_drop.bteq || true
 
 echo "      Recreating Kafka topic '$TOPIC'..."
 docker compose exec -T kafka kafka-topics \
@@ -98,7 +98,7 @@ echo "      Topic recreated."
 step "2/4  Creating DATALAKE object in Teradata"
 
 echo "      Connecting Teradata to Hive Metastore (${HOST_IP}:9083) and MinIO (${HOST_IP}:9000)..."
-bteq_run /tpt/scripts/demo04_datalake_create.bteq
+bteq_run /tpt/scripts/demo04/datalake_create.bteq
 
 # ── Step 3 ─────────────────────────────────────────────────
 step "3/4  Starting Flink job and producer"
@@ -118,7 +118,7 @@ if [ "$BOUNDED" = "1" ]; then
   echo "      Producer done. Submitting Flink batch job (earliest→latest offset)..."
 
   # Batch mode: sql-client blocks until job FINISHED
-  flink_sql /opt/flink/jobs/demo04_batch.sql
+  flink_sql /opt/flink/jobs/demo04/batch.sql
   echo "      Flink batch job complete — Iceberg snapshot committed."
 
 else
@@ -151,7 +151,7 @@ else
 
     echo ""
     step "4/4  Final snapshot"
-    bteq_run /tpt/scripts/demo04_otf_verify.bteq
+    bteq_run /tpt/scripts/demo04/otf_verify.bteq
     echo ""
     echo "======================================================"
     echo "  Demo 4 complete!"
@@ -161,7 +161,7 @@ else
   trap cleanup INT TERM
 
   echo "      Submitting Flink streaming job (checkpoint every 30s)..."
-  FLINK_OUTPUT=$(flink_sql /opt/flink/jobs/demo04_stream.sql 2>&1)
+  FLINK_OUTPUT=$(flink_sql /opt/flink/jobs/demo04/stream.sql 2>&1)
   echo "$FLINK_OUTPUT"
 
   # Extract job ID from SQL client output
@@ -212,7 +212,7 @@ except Exception:
   sleep 35
   while kill -0 "$PRODUCER_PID" 2>/dev/null; do
     echo -n "  [$(date -u +'%H:%M:%S UTC')]  "
-    bteq_run /tpt/scripts/demo04_otf_query.bteq 2>/dev/null \
+    bteq_run /tpt/scripts/demo04/otf_query.bteq 2>/dev/null \
       | grep "^STATUS" \
       || echo "(no data yet — waiting for first checkpoint)"
     sleep 30
@@ -223,7 +223,7 @@ fi
 
 # ── Step 4 (bounded only) ───────────────────────────────────
 step "4/4  Verifying rows via Teradata OTF"
-bteq_run /tpt/scripts/demo04_otf_verify.bteq
+bteq_run /tpt/scripts/demo04/otf_verify.bteq
 
 echo ""
 echo "======================================================"
