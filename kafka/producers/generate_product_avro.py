@@ -88,6 +88,19 @@ def write_index_file(index_path: Path, avro_path: Path):
     print(f"Written index → {index_path}  (→ {container_path})")
 
 
+def write_tpt_manifest(manifest_path: Path, avro_files: list[tuple[int, Path]]):
+    """Write a pipe-delimited manifest for TPT DataConnector BLOB BY NAME loading (Demo 1A).
+    Format: <stage_id>|<container_path_inside_tpt_container>
+    stage_id matches the INTEGER primary key of avro_product_stage.
+    DataConnector reads the path in column 2 and sends the raw bytes to the STREAM operator."""
+    lines = []
+    for stage_id, avro_path in avro_files:
+        container_path = f"/tpt/data/sample/{avro_path.name}"
+        lines.append(f"{stage_id}|{container_path}")
+    manifest_path.write_text("\n".join(lines) + "\n")
+    print(f"Written TPT manifest → {manifest_path}  ({len(lines)} files)")
+
+
 def main():
     v1_avro = OUTPUT_DIR / "product_v1.avro"
     v2_avro = OUTPUT_DIR / "product_v2.avro"
@@ -98,7 +111,9 @@ def main():
     write_index_file(OUTPUT_DIR / "load_v1_index.txt", v1_avro)
     write_index_file(OUTPUT_DIR / "load_v2_index.txt", v2_avro)
 
-    print("Done. Avro files and BTEQ DEFERRED BY NAME index files ready for Demo 1.")
+    write_tpt_manifest(OUTPUT_DIR / "avro_manifest.txt", [(1, v1_avro), (2, v2_avro)])
+
+    print("Done. Avro files, BTEQ index files, and TPT manifest ready for Demos 1 and 1A.")
 
 
 if __name__ == "__main__":

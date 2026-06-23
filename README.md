@@ -11,6 +11,7 @@ Each demo is self-contained and runnable with a single `bash demos/<n>-<name>/ru
 | # | Name | Ingestion method | Key feature shown |
 |---|------|-----------------|-------------------|
 | 1 | [avro-blob](docs/demo01-avro-blob.md) | BTEQ + AvroContainerSplit | Avro container files → `DATASET AVRO` column; schema evolution |
+| 1A | [avro-blob-tpt](docs/demo01a-avro-blob-tpt.md) | TPT STREAM + DataConnector | Same as Demo 1 but BLOB staging via TPT; contrasts BTEQ vs TPT bulk LOB loading |
 | 2 | [kafka-tpt-stream](docs/demo02-kafka-tpt-stream.md) | TPT STREAM + Kafka Access Module | Continuous near-real-time INSERT from Kafka |
 | 3 | [kafka-csv-minio](docs/demo03-kafka-csv-minio.md) | Kafka Connect S3 Sink + NOS | Object store → NOS foreign table with partition pruning |
 | 4 | [kafka-flink-iceberg](docs/demo04-kafka-flink-iceberg.md) | Flink → Iceberg → OTF | Open Table Format query from Teradata via DATALAKE |
@@ -32,6 +33,7 @@ docker compose exec -T tpt bash /tpt/scripts/run_setup.sh
 
 # Then run any demo:
 bash demos/01-avro-blob/run.sh
+bash demos/01a-avro-blob-tpt/run.sh     # same result, TPT loader instead of BTEQ
 bash demos/04-kafka-flink-iceberg/run.sh --bounded
 bash demos/05-flink-td-enrich/run.sh
 ```
