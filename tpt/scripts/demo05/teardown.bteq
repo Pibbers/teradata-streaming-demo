@@ -1,0 +1,17 @@
+/* Demo 5 — Remove the aircraft reference table from Teradata (reset).
+   Error 3807 suppressed — safe to run when table does not exist.
+
+   Variables substituted by perl in run_bteq.sh:
+     ${TD_HOST}  ${TD_USER}  ${TD_PASSWORD}  ${TD_DATABASE}
+*/
+
+.SET ERROROUT STDOUT
+.SET ERRORLEVEL 3807 SEVERITY 0
+
+.LOGON ${TD_HOST}/${TD_USER},${TD_PASSWORD};
+DATABASE ${TD_DATABASE};
+
+DROP TABLE aircraft_ref;
+
+.LOGOFF;
+.QUIT;

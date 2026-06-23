@@ -1,0 +1,21 @@
+/* Demo 5 — Single-line heartbeat for the monitoring loop.
+   Outputs one parseable STATUS line so run.sh can grep for it.
+   Row count and aircraft count reflect the latest committed Iceberg snapshot.
+
+   Variables substituted by perl in run_bteq.sh:
+     ${TD_HOST}  ${TD_USER}  ${TD_PASSWORD}  ${TD_DATABASE}
+*/
+
+.SET ERROROUT STDOUT
+.SET WIDTH 200
+
+.LOGON ${TD_HOST}/${TD_USER},${TD_PASSWORD};
+DATABASE ${TD_DATABASE};
+
+SELECT 'STATUS rows='     || TRIM(CAST(COUNT(*)               AS VARCHAR(10)))
+    || ' aircraft='       || TRIM(CAST(COUNT(DISTINCT icao24) AS VARCHAR(10)))
+    || ' latest='         || COALESCE(TRIM(CAST(MAX(ts) AS VARCHAR(30))), 'none')
+FROM demo_iceberg.demo.enriched_positions;
+
+.LOGOFF;
+.QUIT;
