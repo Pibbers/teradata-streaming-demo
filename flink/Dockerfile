@@ -98,6 +98,28 @@ RUN curl -fsSL "${MAVEN}/com/google/guava/guava/27.0-jre/guava-27.0-jre.jar" \
     curl -fsSL "${MAVEN}/joda-time/joda-time/2.8.1/joda-time-2.8.1.jar" \
         -o /opt/flink/lib/joda-time.jar
 
+# ── Teradata dialect for flink-connector-jdbc ────────────────────────────────
+# Registers TeradataFactory via SPI so 'connector' = 'jdbc' accepts jdbc:teradata://
+# URLs. Compiled here from source against flink-connector-jdbc 3.3.0-1.20.
+# Uses ECJ 3.29.0 (runs on JRE 11, unlike ECJ 3.35+ which requires JRE 17).
+COPY jobs/TeradataDialectConverter.java /tmp/td-src/TeradataDialectConverter.java
+COPY jobs/TeradataDialect.java           /tmp/td-src/TeradataDialect.java
+COPY jobs/TeradataFactory.java           /tmp/td-src/TeradataFactory.java
+RUN apt-get update && apt-get install -y --no-install-recommends zip && rm -rf /var/lib/apt/lists/* && \
+    curl -fsSL "https://repo1.maven.org/maven2/org/eclipse/jdt/ecj/3.29.0/ecj-3.29.0.jar" \
+        -o /tmp/ecj.jar && \
+    CP="$(ls /opt/flink/lib/*.jar | tr '\n' ':')" && \
+    java -jar /tmp/ecj.jar -1.8 -nowarn -d /tmp/td-classes -cp "$CP" \
+        /tmp/td-src/TeradataDialectConverter.java \
+        /tmp/td-src/TeradataDialect.java \
+        /tmp/td-src/TeradataFactory.java && \
+    mkdir -p /tmp/td-jar/META-INF/services && \
+    cp -r /tmp/td-classes/com /tmp/td-jar/ && \
+    echo "com.teradata.flink.TeradataFactory" \
+        > "/tmp/td-jar/META-INF/services/org.apache.flink.connector.jdbc.core.database.JdbcFactory" && \
+    (cd /tmp/td-jar && zip -r /opt/flink/lib/flink-connector-jdbc-teradata.jar .) && \
+    rm -rf /tmp/td-src /tmp/td-classes /tmp/td-jar /tmp/ecj.jar
+
 # ── Hadoop config: registers S3A FileSystem so Iceberg can access MinIO ────────
 # Flink picks up core-site.xml from its own conf dir when HADOOP_CONF_DIR is unset.
 COPY core-site.xml /opt/flink/conf/core-site.xml

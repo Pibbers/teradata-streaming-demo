@@ -869,6 +869,213 @@ FOR TIMESTAMP AS OF TIMESTAMP '2026-06-22 12:01:00';
 
 ---
 
+## Demo 5: Flink Lookup Join → Teradata enrichment
+
+**Topic:** A live ADS-B stream carries only ICAO24 aircraft identifiers. Teradata holds the master `aircraft_ref` reference table (registration, aircraft type, operator, country). Flink enriches each position message in-flight via a **JDBC Lookup Join** — querying Teradata per-message with a 30-second cache — then writes enriched rows to Iceberg. Teradata queries its own enrichment back via OTF.
+
+This reverses the usual data-flow: instead of pushing data *into* Teradata, Flink pulls reference data *from* Teradata to enhance a real-time stream.
+
+### What it demonstrates
+
+- **Teradata as an enrichment source** — the JDBC Lookup Join connector executes `SELECT … WHERE icao24 = ?` against Teradata using the `terajdbc` driver; results are cached per the configured TTL, keeping Teradata load minimal
+- **Cache TTL and live invalidation** — with a 30-second TTL, an `UPDATE` to `aircraft_ref` in Teradata propagates to newly enriched Iceberg rows within one checkpoint window; visible without restarting Flink
+- **LEFT JOIN graceful degradation** — ICAO24 codes with no matching reference row receive `UNKNOWN` defaults rather than being dropped; the enriched stream never stalls
+- **Teradata as both source and destination** — `aircraft_ref` is the lookup source; `enriched_positions` in Iceberg is the OTF query target; both accessed from the same Teradata session
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `kafka/producers/adsb_producer.py` | Same ADS-B producer as Demos 2 and 4 — reused without modification |
+| `flink/jobs/demo05_stream.sql` | Flink SQL template: Kafka source + JDBC Lookup Join + Iceberg sink (checkpoint 30s) |
+| `flink/jobs/demo05_batch.sql` | Bounded variant: earliest→latest-offset Kafka scan; exits when all messages processed |
+| `flink/jobs/demo05_drop.sql` | Reset: DROP TABLE enriched_positions (leaves Demo 4's adsb_positions intact) |
+| `tpt/scripts/demo05_setup.bteq` | CREATE TABLE aircraft_ref + INSERT 10 fleet rows; safe to re-run |
+| `tpt/scripts/demo05_teardown.bteq` | DROP TABLE aircraft_ref (full reset) |
+| `tpt/scripts/demo05_otf_query.bteq` | Single-line heartbeat: `STATUS rows=N aircraft=N latest=TIMESTAMP` |
+| `tpt/scripts/demo05_otf_verify.bteq` | Final: HELP TABLE, row/aircraft summary, per-aircraft enrichment, TD_SNAPSHOTS() |
+| `demos/05-flink-td-enrich/run.sh` | Orchestration — dual-mode (continuous / bounded) |
+
+### How to run
+
+```bash
+# Continuous streaming (default) — press Ctrl+C to stop
+bash demos/05-flink-td-enrich/run.sh
+
+# Bounded mode — 200 messages; exits automatically
+bash demos/05-flink-td-enrich/run.sh --bounded
+```
+
+### What to expect
+
+```
+======================================================
+  Demo 5: Flink Lookup Join → Teradata enrichment
+  Teradata host:            192.168.1.199
+  Reference table:          demo_db.aircraft_ref
+  Mode:                     CONTINUOUS (Ctrl+C to stop)
+======================================================
+
+── 1/6  Resetting prior state
+      Dropping enriched_positions Iceberg table...
+      Topic recreated.
+
+── 2/6  Setting up Teradata reference table
+      icao24   registration   aircraft_type   operator              country
+      ------   ------------   -------------   --------------------  -----------
+      34618a   EC-MXV         A330-200        Iberia                Spain
+      3950f2   F-HTYB         A350-900        Air France            France
+      3c4b0f   D-AIHE         A340-600        Lufthansa             Germany
+      3f7062   EI-FTP         B737-800        Ryanair               Ireland
+      ...
+
+── 3/6  Ensuring DATALAKE object is present
+
+── 4/6  Starting Flink lookup-join streaming job
+      Flink job ID: f1e2d3c4b5a6...
+      Starting producer (continuous, 1s interval, 10 aircraft)...
+
+  Enriched rows visible in Teradata every ~30s (one Iceberg checkpoint).
+  Each row includes registration, aircraft_type, operator, country
+  sourced from Teradata aircraft_ref via JDBC Lookup Join.
+
+  DEMO TIP — live cache invalidation:
+    UPDATE demo_db.aircraft_ref WHERE icao24='3f7062'
+    SET operator='Ryanair DAC';
+    The change appears in enriched_positions after the 30s cache expires.
+
+── 5/6  Streaming — press Ctrl+C to stop
+
+  [12:01:05 UTC]  STATUS rows=0    aircraft=0  latest=none
+  [12:01:35 UTC]  STATUS rows=291  aircraft=10 latest=2026-06-22 12:01:33.882
+  [12:02:05 UTC]  STATUS rows=582  aircraft=10 latest=2026-06-22 12:02:04.215
+  ...
+
+^C
+── Stopping producer...
+── Waiting 35s for final Iceberg checkpoint to commit...
+── Cancelling Flink job f1e2d3c4b5a6...
+
+── 6/6  Final verification
+
+  icao24   callsign   positions   registration   type       operator          country
+  ------   --------   ---------   ------------   --------   ---------------   -----------
+  34618a   IBE601           145   EC-MXV         A330-200   Iberia            Spain
+  3950f2   AFR674           145   F-HTYB         A350-900   Air France        France
+  3c4b0f   DLH463           145   D-AIHE         A340-600   Lufthansa         Germany
+  3f7062   RYR4421          145   EI-FTP         B737-800   Ryanair DAC       Ireland  ← updated
+  ...
+```
+
+### How it works
+
+```
+1. Reset
+   └─ Flink SQL client drops enriched_positions (leaves adsb_positions intact)
+   └─ Kafka topic deleted and recreated (clean offset)
+
+2. Reference table setup
+   └─ BTEQ: DROP + CREATE aircraft_ref in demo_db
+   └─ INSERT 10 rows matching the adsb_producer.py fleet
+   └─ SELECT confirms all rows visible in Teradata
+
+3. DATALAKE verification
+   └─ demo04_datalake_create.bteq: idempotent CREATE DATALAKE demo_iceberg
+   └─ Required for OTF queries in steps 5/6
+
+4. Flink job submission
+   └─ demo05_stream.sql substituted (${TD_HOST} etc. → real values via perl)
+   └─ Written to flink/jobs/demo05_stream_sub.sql (bind-mounted volume)
+   └─ Flink SQL client submits streaming INSERT; exits after job accepted
+   └─ Job continues running in cluster; ID captured for cleanup
+
+5. Streaming with monitoring
+   └─ adsb_producer.py publishes 10 aircraft positions at 1s interval
+   └─ Flink reads each row from Kafka, looks up icao24 in aircraft_ref:
+        └─ Cache hit (within 30s TTL): uses cached registration/operator
+        └─ Cache miss: issues SELECT FROM aircraft_ref WHERE icao24 = ? to Teradata
+   └─ Enriched rows written to Iceberg; committed every 30s checkpoint
+   └─ Monitor loop queries Teradata OTF every 30s for row count
+
+6. Graceful shutdown (Ctrl+C)
+   └─ Producer killed → wait 35s → final Iceberg snapshot committed
+   └─ Flink job cancelled via REST PATCH /jobs/{id}?mode=cancel
+   └─ Final verify: per-aircraft table with enriched fields + TD_SNAPSHOTS()
+```
+
+### Live cache invalidation walkthrough
+
+The 30-second cache TTL makes Teradata's role as a live reference store visible during a demo:
+
+```sql
+-- 1. Observe Ryanair rows in Teradata OTF showing operator='Ryanair'
+SELECT icao24, operator FROM demo_iceberg.demo.enriched_positions
+WHERE icao24 = '3f7062' ORDER BY ts DESC SAMPLE 3;
+
+-- 2. Update the reference table in Teradata
+UPDATE demo_db.aircraft_ref WHERE icao24 = '3f7062'
+SET operator = 'Ryanair DAC';
+
+-- 3. Wait ~35s (cache TTL expires; next Kafka messages re-query Teradata)
+
+-- 4. New enriched rows show the updated operator
+SELECT icao24, operator, ts FROM demo_iceberg.demo.enriched_positions
+WHERE icao24 = '3f7062' ORDER BY ts DESC SAMPLE 5;
+-- operator transitions from 'Ryanair' → 'Ryanair DAC' at the cache boundary
+```
+
+### aircraft_ref reference table
+
+| icao24 | registration | aircraft_type | operator | country |
+|--------|-------------|--------------|---------|---------|
+| 34618a | EC-MXV | A330-200 | Iberia | Spain |
+| 3950f2 | F-HTYB | A350-900 | Air France | France |
+| 3c4b0f | D-AIHE | A340-600 | Lufthansa | Germany |
+| 3f7062 | EI-FTP | B737-800 | Ryanair | Ireland |
+| 400a5b | G-YMML | B777-200 | British Airways | UK |
+| 4073d6 | G-TUIM | B787-8 | TUI Airways | UK |
+| 440a45 | G-VPOP | A350-1000 | Virgin Atlantic | UK |
+| 4841d8 | PH-BVI | B777-200 | KLM | Netherlands |
+| 4b1803 | HB-JCF | A220-300 | Swiss Int'l Air Lines | Switzerland |
+| 4ca87a | EI-GEK | A330-300 | Aer Lingus | Ireland |
+
+### Flink SQL key excerpts
+
+```sql
+-- Processing-time attribute — required for lookup join temporal syntax
+CREATE TEMPORARY TABLE kafka_adsb (
+    icao24    STRING,
+    ...
+    proc_time AS PROCTIME()   -- not written to Iceberg
+) WITH ('connector' = 'kafka', ...);
+
+-- Teradata JDBC lookup table — Flink issues parameterised SELECT per cache miss
+CREATE TEMPORARY TABLE aircraft_ref (
+    icao24        STRING,
+    registration  STRING,
+    aircraft_type STRING,
+    operator      STRING,
+    country       STRING,
+    PRIMARY KEY (icao24) NOT ENFORCED  -- declares lookup key; no uniqueness check
+) WITH (
+    'connector'                               = 'jdbc',
+    'url'                                     = 'jdbc:teradata://<TD_HOST>/DATABASE=demo_db,...',
+    'table-name'                              = 'aircraft_ref',
+    'lookup.cache'                            = 'PARTIAL',
+    'lookup.partial-cache.max-rows'           = '10000',
+    'lookup.partial-cache.expire-after-write' = '30s'
+);
+
+-- Temporal lookup join
+INSERT INTO enriched_positions
+SELECT a.icao24, ..., r.registration, r.aircraft_type, r.operator, r.country
+FROM kafka_adsb a
+LEFT JOIN aircraft_ref FOR SYSTEM_TIME AS OF a.proc_time AS r
+    ON a.icao24 = r.icao24;
+```
+
+---
+
 ## Further reading
 
 - Teradata DATASET Data Type — B035-1198 (Avro Object Container File loading)
