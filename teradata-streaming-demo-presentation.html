@@ -530,8 +530,7 @@ footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--te
       <li><a href="#role" data-nav><span class="navnum">⇄</span>Teradata's role</a></li>
       <li><a href="#architecture" data-nav><span class="navnum">∞</span>Infrastructure</a></li>
       <li class="navgroup-label">Demo topics</li>
-      <li><a href="#demo01" data-nav><span class="navnum">01</span>Avro BLOB · BTEQ</a></li>
-      <li><a href="#demo01a" data-nav><span class="navnum">01A</span>Avro BLOB · TPT</a></li>
+      <li><a href="#demo01" data-nav><span class="navnum">01</span>Avro BLOB · TPT</a></li>
       <li><a href="#demo02" data-nav><span class="navnum">02</span>Kafka → TPT Stream</a></li>
       <li><a href="#demo03" data-nav><span class="navnum">03</span>Kafka → NOS</a></li>
       <li><a href="#demo04" data-nav><span class="navnum">04</span>Flink → Iceberg → OTF</a></li>
@@ -588,19 +587,10 @@ footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--te
       <a href="#demo01" class="card" style="--node-c:var(--c-tpt); display:block;">
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <span class="demo-id">01</span>
-          <span class="tag" style="border-color:transparent; padding:0;">BTEQ</span>
-        </div>
-        <h3 style="font-size:17px; margin-top:14px;">Avro BLOB → DATASET</h3>
-        <p style="font-size:13.5px; margin-top:8px;">Avro container files staged as BLOBs, split into <code>DATASET AVRO</code> rows. Schema evolution, no ETL rewrite.</p>
-      </a>
-
-      <a href="#demo01a" class="card" style="--node-c:var(--c-tpt); display:block;">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <span class="demo-id">01A</span>
           <span class="tag" style="border-color:transparent; padding:0;">TPT STREAM</span>
         </div>
-        <h3 style="font-size:17px; margin-top:14px;">Avro BLOB → DATASET, the TPT way</h3>
-        <p style="font-size:13.5px; margin-top:8px;">Same result as Demo&nbsp;01, but loaded by a single restartable TPT job instead of two BTEQ sessions.</p>
+        <h3 style="font-size:17px; margin-top:14px;">Avro BLOB → DATASET</h3>
+        <p style="font-size:13.5px; margin-top:8px;">Avro container files loaded via a single restartable TPT job, split into <code>DATASET AVRO</code> rows. Schema evolution, no ETL rewrite.</p>
       </a>
 
       <a href="#demo02" class="card" style="--node-c:var(--c-kafka); display:block;">
@@ -747,7 +737,7 @@ footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--te
     <p style="font-size:13px; color:var(--text-faint); margin-top:6px;">
       Demos 02, 04, and 05 in this guide all run in the near-real-time-to-high-frequency-microbatch band
       (5–30 second end-to-end latency); Demo 03 runs as a high-frequency microbatch on a 5-minute Kafka Connect
-      flush. Demos 01 and 01A are bulk file loads and sit outside the streaming ladder entirely.
+      flush. Demo 01 is a bulk file load and sits outside the streaming ladder entirely.
     </p>
 
     <div class="subhead" style="margin-top:52px;">Three ways in</div>
@@ -968,7 +958,6 @@ docker compose exec -T tpt bash /tpt/scripts/run_setup.sh
 
 # Then run any demo:
 bash demos/01-avro-blob/run.sh
-bash demos/01a-avro-blob-tpt/run.sh     # same result, TPT loader instead of BTEQ
 bash demos/04-kafka-flink-iceberg/run.sh --bounded
 bash demos/05-flink-td-enrich/run.sh</code></pre></div>
     </div>
@@ -985,16 +974,16 @@ bash demos/05-flink-td-enrich/run.sh</code></pre></div>
     <div class="sec-head">
       <div class="subhead">Demo 01 · File ingestion</div>
       <h2><span class="demo-id" style="margin-right:12px;">01</span>Avro BLOB → <code style="font-size:0.7em;">DATASET</code> column</h2>
-      <p class="sub">Loading Avro container files into a Teradata <code>DATASET STORAGE FORMAT AVRO</code> column,
-      with schema evolution across two file versions — using the classic BTEQ loading path.</p>
+      <p class="sub">Loading Avro container files into a Teradata <code>DATASET STORAGE FORMAT AVRO</code> column
+      via a single restartable <strong>TPT STREAM</strong> job, with schema evolution across two file versions.</p>
       <div style="display:flex; gap:8px; margin-top:16px; flex-wrap:wrap;">
-        <span class="tag" style="--node-c:var(--c-tpt);"><span class="sw" style="background:var(--c-tpt)"></span>Ingestion: BTEQ DEFERRED BY NAME</span>
-        <span class="tag" style="--node-c:var(--c-teradata);"><span class="sw" style="background:var(--c-teradata)"></span>Feature: schema evolution</span>
+        <span class="tag" style="--node-c:var(--c-tpt);"><span class="sw" style="background:var(--c-tpt)"></span>Ingestion: TPT STREAM + DataConnector</span>
+        <span class="tag" style="--node-c:var(--c-teradata);"><span class="sw" style="background:var(--c-teradata)"></span>Feature: schema evolution · restartable multi-file load</span>
       </div>
     </div>
 
     <div class="card" style="padding:24px 24px 16px; overflow-x:auto; margin-top:28px;">
-      <svg class="flow-svg" viewBox="0 0 1040 130" style="width:100%; min-width:760px; height:auto;">
+      <svg class="flow-svg" viewBox="0 0 1190 130" style="width:100%; min-width:860px; height:auto;">
         <defs>
   <marker id="arrow-d01" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
     <path d="M0,0 L10,5 L0,10 z" fill="var(--border-strong)"></path>
@@ -1004,30 +993,36 @@ bash demos/05-flink-td-enrich/run.sh</code></pre></div>
   </marker>
 </defs>
 <g class="flow-node">
-  <rect x="20" y="45" width="150" height="50" style="stroke:var(--c-producer)"></rect>
-  <text x="95.0" y="67.0" text-anchor="middle" class="lbl">Avro generator</text>
-  <text x="95.0" y="83.0" text-anchor="middle" class="sub">fastavro · 2 files</text>
+  <rect x="10" y="45" width="150" height="50" style="stroke:var(--c-producer)"></rect>
+  <text x="85.0" y="67.0" text-anchor="middle" class="lbl">Avro generator</text>
+  <text x="85.0" y="83.0" text-anchor="middle" class="sub">fastavro · N files</text>
 </g>
-<path class="flow-edge" d="M170,70 L210,70" marker-end="url(#arrow-d01)"></path>
+<path class="flow-edge" d="M160,70 L205,70" marker-end="url(#arrow-d01)"></path>
 <g class="flow-node">
-  <rect x="210" y="45" width="180" height="50" style="stroke:var(--c-tpt)"></rect>
-  <text x="300.0" y="67.0" text-anchor="middle" class="lbl">BTEQ</text>
-  <text x="300.0" y="83.0" text-anchor="middle" class="sub">DEFERRED BY NAME</text>
+  <rect x="205" y="45" width="150" height="50" style="stroke:var(--c-tpt)"></rect>
+  <text x="280.0" y="67.0" text-anchor="middle" class="lbl">manifest.txt</text>
+  <text x="280.0" y="83.0" text-anchor="middle" class="sub">stage_id|path</text>
 </g>
-<path class="flow-edge" d="M390,70 L450,70" marker-end="url(#arrow-d01)"></path>
-<rect x="430" y="14" width="610" height="92" rx="12" fill="none" stroke="var(--border-strong)" stroke-width="1.6" stroke-dasharray="3 5"></rect>
-<text x="446" y="32" text-anchor="start" class="sub">TERADATA</text>
+<path class="flow-edge" d="M355,70 L400,70" marker-end="url(#arrow-d01)"></path>
 <g class="flow-node">
-  <rect x="450" y="45" width="170" height="50" style="stroke:var(--c-teradata)"></rect>
-  <text x="535.0" y="67.0" text-anchor="middle" class="lbl">avro_product_stage</text>
-  <text x="535.0" y="83.0" text-anchor="middle" class="sub">BLOB column</text>
+  <rect x="400" y="45" width="190" height="50" style="stroke:var(--c-tpt)"></rect>
+  <text x="495.0" y="67.0" text-anchor="middle" class="lbl">TPT DataConnector</text>
+  <text x="495.0" y="83.0" text-anchor="middle" class="sub">+ STREAM, one job</text>
 </g>
-<path class="flow-edge active" d="M620,70 L850,70" marker-end="url(#arrowHl-d01)"></path>
-<text x="735" y="58" text-anchor="middle" class="sub" fill="var(--c-teradata)">AvroContainerSplit</text>
+<path class="flow-edge" d="M590,70 L630,70" marker-end="url(#arrow-d01)"></path>
+<rect x="610" y="14" width="430" height="92" rx="12" fill="none" stroke="var(--border-strong)" stroke-width="1.6" stroke-dasharray="3 5"></rect>
+<text x="626" y="32" text-anchor="start" class="sub">TERADATA</text>
+<g class="flow-node">
+  <rect x="630" y="45" width="160" height="50" style="stroke:var(--c-teradata)"></rect>
+  <text x="710.0" y="67.0" text-anchor="middle" class="lbl">avro_product_stage</text>
+  <text x="710.0" y="83.0" text-anchor="middle" class="sub">BLOB column</text>
+</g>
+<path class="flow-edge active" d="M790,70 L1000,70" marker-end="url(#arrowHl-d01)"></path>
+<text x="895" y="58" text-anchor="middle" class="sub" fill="var(--c-teradata)">AvroContainerSplit</text>
 <g class="flow-node hl">
-  <rect x="850" y="45" width="170" height="50" style="stroke:var(--c-teradata)"></rect>
-  <text x="935.0" y="67.0" text-anchor="middle" class="lbl">avro_product</text>
-  <text x="935.0" y="83.0" text-anchor="middle" class="sub">DATASET AVRO</text>
+  <rect x="1000" y="45" width="160" height="50" style="stroke:var(--c-teradata)"></rect>
+  <text x="1080.0" y="67.0" text-anchor="middle" class="lbl">avro_product</text>
+  <text x="1080.0" y="83.0" text-anchor="middle" class="sub">DATASET AVRO</text>
 </g>
       </svg>
     </div>
@@ -1036,13 +1031,15 @@ bash demos/05-flink-td-enrich/run.sh</code></pre></div>
       <div>
         <div class="subhead">What it demonstrates</div>
         <ul class="bullets">
-          <li>The documented Teradata workflow for loading Avro Object Container Files: stage each file as a
-            BLOB with BTEQ <code>DEFERRED BY NAME</code>, then expand it into individual records with the
-            <code>AvroContainerSplit</code> table operator.</li>
+          <li><strong>TPT STREAM is the only high-throughput TPT operator that supports BLOB/CLOB columns</strong> —
+            LOAD (FastLoad) and MLoad both reject LOB columns at job start; STREAM accepts them.</li>
+          <li><code>BLOB(size) AS DEFERRED BY NAME</code> is the TPT schema attribute for a BLOB column whose value is
+            a file path — DataConnector reads the bytes at that path and passes them to STREAM.</li>
+          <li><strong>Manifest-based multi-file loading</strong> — a single TPT job processes a pipe-delimited manifest
+            of N files; both container files are loaded in one restartable job.</li>
           <li><strong>Schema evolution without ETL rewrites:</strong> v1 records (5 fields) and v2 records (8 fields)
             coexist in the same <code>DATASET AVRO</code> column; querying a v2 field on a v1 row returns <code>NULL</code>.</li>
-          <li>Dot-notation access (<code>avro.."field_name"</code>) on <code>DATASET</code> columns.</li>
-          <li><code>AVRO_CHECK()</code> for inline validity verification.</li>
+          <li>Dot-notation access (<code>avro.."field_name"</code>) and <code>AVRO_CHECK()</code> for inline validation.</li>
         </ul>
       </div>
       <div>
@@ -1065,18 +1062,19 @@ bash demos/01-avro-blob/run.sh</code></pre></div>
     <div class="steps">
       <div class="step" style="--node-c:var(--c-producer)">
         <div class="step-num">1</div>
-        <h4>Generate Avro container files</h4>
+        <h4>Generate Avro container files + manifest</h4>
         <p><code>fastavro</code> writes binary Avro Object Container File format. The schema carries
         <strong>no namespace</strong>, since a namespace produces a dotted record name, and Teradata's
-        Avro&nbsp;1.7.7 parser reads only unqualified record names.</p>
+        Avro&nbsp;1.7.7 parser reads only unqualified record names. A pipe-delimited manifest lists each file path.</p>
         <span class="mini">kafka/producers/generate_product_avro.py</span>
       </div>
       <div class="step" style="--node-c:var(--c-tpt)">
         <div class="step-num">2</div>
-        <h4>Stage as BLOB via BTEQ <code style="font-size:0.85em;">DEFERRED BY NAME</code></h4>
-        <p>An index file holds the path to the <code>.avro</code> file; BTEQ reads the binary and inserts it as a
-        single BLOB row. One row per container file.</p>
-        <span class="mini">avro_product_stage</span>
+        <h4>TPT STREAM load — <code style="font-size:0.85em;">BLOB(size) AS DEFERRED BY NAME</code></h4>
+        <p>DataConnector reads the manifest, opens each file path, and streams the raw bytes to the STREAM operator.
+        Both container files are loaded in a single restartable job; <code>twbrmcp ttuuser</code> clears any
+        previous checkpoint before each run.</p>
+        <span class="mini">tpt/tbuild/avro_blob_load.tbuild → avro_product_stage</span>
       </div>
       <div class="step" style="--node-c:var(--c-teradata)">
         <div class="step-num">3</div>
@@ -1097,7 +1095,7 @@ bash demos/01-avro-blob/run.sh</code></pre></div>
       <div class="codepanel-head">
         <div class="codepanel-tabs">
           <button class="codepanel-tab active" onclick="showTab('cp-demo01',0)">DDL</button>
-          <button class="codepanel-tab" onclick="showTab('cp-demo01',1)">decode.bteq</button>
+          <button class="codepanel-tab" onclick="showTab('cp-demo01',1)">TPT load + decode</button>
           <button class="codepanel-tab" onclick="showTab('cp-demo01',2)">sample queries</button>
         </div>
       </div>
@@ -1114,11 +1112,13 @@ CREATE MULTISET TABLE avro_product (
   avro_obj_id   INTEGER,
   avro          DATASET(2097088000) INLINE LENGTH 64000 STORAGE FORMAT AVRO
 ) PRIMARY INDEX (container_id);</code></pre></div>
-        <div class="code-view"><pre><code class="language-sql">-- BTEQ: stage one file (load_v1.bteq / load_v2.bteq use this pattern)
-.IMPORT VARTEXT file=data/sample/load_v1_index.txt
-.REPEAT *
-USING (c1 BLOB AS DEFERRED BY NAME)
-INSERT INTO demo_db.avro_product_stage (1, :c1);
+        <div class="code-view"><pre><code class="language-sql">-- avro_manifest.txt format (pipe-delimited):
+--   1|/tpt/data/sample/product_v1.avro
+--   2|/tpt/data/sample/product_v2.avro
+
+-- TPT STREAM operator schema (avro_blob_load.tbuild):
+--   stage_id  VARCHAR(10)
+--   container BLOB(10000000) AS DEFERRED BY NAME   ← key syntax
 
 -- decode.bteq: split the container, then verify
 INSERT INTO demo_db.avro_product
@@ -1153,21 +1153,23 @@ WHERE avro.."discount_pct" > 20.0;</code></pre></div>
         <span class="dot" style="background:#FF5F57"></span><span class="dot" style="background:#FEBC2E"></span><span class="dot" style="background:#28C840"></span>
         <span class="label">bash demos/01-avro-blob/run.sh</span>
       </div>
-      <pre><span class="term-head2">══════════════════════════════════════════════
+      <pre><span class="term-head2">======================================================
   Demo 1: Avro BLOB → Teradata DATASET column
-══════════════════════════════════════════════</span>
+======================================================</span>
 
-<span class="term-hl">── 1/4  Generating Avro container files</span>
+<span class="term-hl">── 1/4  Generating Avro container files + TPT manifest</span>
 Written 30 records → data/sample/product_v1.avro
 Written 30 records → data/sample/product_v2.avro
+Written TPT manifest → data/sample/avro_manifest.txt  (2 files)
 
-<span class="term-hl">── 2/4  Clearing staging tables</span>
+<span class="term-hl">── 2/4  Clearing staging tables and TPT work tables</span>
 
-<span class="term-hl">── 3/4  Loading Avro files into Teradata (BTEQ DEFERRED BY NAME)</span>
-      → product_v1.avro (schema v1: 5 fields)
-      <span class="term-ok">*** Insert completed. One row added.</span>
-      → product_v2.avro (schema v2: 8 fields)
-      <span class="term-ok">*** Insert completed. One row added.</span>
+<span class="term-hl">── 3/4  Loading Avro files into Teradata (TPT STREAM, BLOB AS DEFERRED BY NAME)</span>
+      manifest: /tpt/data/sample/avro_manifest.txt (2 container files)
+      <span class="term-dim">twbrmcp ttuuser   # clears any checkpoint from a previous run</span>
+      <span class="term-ok">Job ttuuser completed successfully</span>
+      stage_id 1 = product_v1.avro (schema v1: 5 fields)
+      stage_id 2 = product_v2.avro (schema v2: 8 fields)
 
 <span class="term-hl">── 4/4  Decoding BLOBs into DATASET column and verifying</span>
 
@@ -1187,143 +1189,6 @@ Written 30 records → data/sample/product_v2.avro
   ---   ------------     ------  -----------   ------------
     1   08a63ba7-...     19.99   <span class="term-dim">(null)</span>        <span class="term-dim">(null)</span>
     2   f3a1c204-...    149.99   Premium...    12.5</pre>
-    </div>
-
-  </div>
-</section>
-<section id="demo01a">
-  <div class="wrap">
-    <div class="sec-head">
-      <div class="subhead">Demo 01A · File ingestion, TPT variant</div>
-      <h2><span class="demo-id" style="margin-right:12px;">01A</span>Same Avro story, loaded by TPT</h2>
-      <p class="sub">Identical end state to Demo&nbsp;01 — two Avro files staged as BLOBs, split with
-      <code>AvroContainerSplit</code>, queried with dot notation — but the staging step now runs as a single
-      <strong>TPT STREAM</strong> job instead of two BTEQ sessions.</p>
-      <div style="display:flex; gap:8px; margin-top:16px; flex-wrap:wrap;">
-        <span class="tag" style="--node-c:var(--c-tpt);"><span class="sw" style="background:var(--c-tpt)"></span>Ingestion: TPT STREAM + DataConnector</span>
-        <span class="tag" style="--node-c:var(--c-teradata);"><span class="sw" style="background:var(--c-teradata)"></span>Feature: restartable multi-file load</span>
-      </div>
-    </div>
-
-    <div class="card" style="padding:24px 24px 16px; overflow-x:auto; margin-top:28px;">
-      <svg class="flow-svg" viewBox="0 0 1190 130" style="width:100%; min-width:860px; height:auto;">
-        <defs>
-  <marker id="arrow-d01a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-    <path d="M0,0 L10,5 L0,10 z" fill="var(--border-strong)"></path>
-  </marker>
-  <marker id="arrowHl-d01a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-    <path d="M0,0 L10,5 L0,10 z" fill="var(--primary)"></path>
-  </marker>
-</defs>
-<g class="flow-node">
-  <rect x="10" y="45" width="150" height="50" style="stroke:var(--c-producer)"></rect>
-  <text x="85.0" y="67.0" text-anchor="middle" class="lbl">Avro generator</text>
-  <text x="85.0" y="83.0" text-anchor="middle" class="sub">fastavro · N files</text>
-</g>
-<path class="flow-edge" d="M160,70 L205,70" marker-end="url(#arrow-d01a)"></path>
-<g class="flow-node">
-  <rect x="205" y="45" width="150" height="50" style="stroke:var(--c-tpt)"></rect>
-  <text x="280.0" y="67.0" text-anchor="middle" class="lbl">manifest.txt</text>
-  <text x="280.0" y="83.0" text-anchor="middle" class="sub">stage_id|path</text>
-</g>
-<path class="flow-edge" d="M355,70 L400,70" marker-end="url(#arrow-d01a)"></path>
-<g class="flow-node">
-  <rect x="400" y="45" width="190" height="50" style="stroke:var(--c-tpt)"></rect>
-  <text x="495.0" y="67.0" text-anchor="middle" class="lbl">TPT DataConnector</text>
-  <text x="495.0" y="83.0" text-anchor="middle" class="sub">+ STREAM, one job</text>
-</g>
-<path class="flow-edge" d="M590,70 L630,70" marker-end="url(#arrow-d01a)"></path>
-<rect x="610" y="14" width="430" height="92" rx="12" fill="none" stroke="var(--border-strong)" stroke-width="1.6" stroke-dasharray="3 5"></rect>
-<text x="626" y="32" text-anchor="start" class="sub">TERADATA</text>
-<g class="flow-node">
-  <rect x="630" y="45" width="160" height="50" style="stroke:var(--c-teradata)"></rect>
-  <text x="710.0" y="67.0" text-anchor="middle" class="lbl">avro_product_stage</text>
-  <text x="710.0" y="83.0" text-anchor="middle" class="sub">BLOB column</text>
-</g>
-<path class="flow-edge active" d="M790,70 L1000,70" marker-end="url(#arrowHl-d01a)"></path>
-<text x="895" y="58" text-anchor="middle" class="sub" fill="var(--c-teradata)">AvroContainerSplit</text>
-<g class="flow-node hl">
-  <rect x="1000" y="45" width="160" height="50" style="stroke:var(--c-teradata)"></rect>
-  <text x="1080.0" y="67.0" text-anchor="middle" class="lbl">avro_product</text>
-  <text x="1080.0" y="83.0" text-anchor="middle" class="sub">DATASET AVRO</text>
-</g>
-      </svg>
-    </div>
-
-    <div class="subhead" style="margin-top:40px;">What it demonstrates</div>
-    <ul class="bullets">
-      <li><strong>TPT STREAM is the only high-throughput TPT operator that supports BLOB/CLOB columns</strong> —
-        LOAD (FastLoad) and MLoad both reject LOB columns at job start; STREAM accepts them.</li>
-      <li><code>BLOB(size) AS DEFERRED BY NAME</code> is the TPT schema attribute for a BLOB column whose value is
-        a file path — DataConnector reads the bytes at that path and passes them to STREAM. It is the direct TPT
-        equivalent of BTEQ's <code>AS DEFERRED BY NAME</code>.</li>
-      <li><strong>Manifest-based multi-file loading</strong> — a single TPT job processes a pipe-delimited manifest
-        of N files; Demo&nbsp;01 needed two separate BTEQ sessions. TPT scales to thousands of files with no code changes.</li>
-      <li><strong>TPT job infrastructure</strong> — explicit <code>LogTable</code> / <code>ErrorTable</code>,
-        checkpoint/restart via <code>PRESERVE_RESTART_INFO</code>, formal job definition vs BTEQ's imperative script.</li>
-    </ul>
-
-    <div class="subhead" style="margin-top:40px;">BTEQ vs TPT, side by side</div>
-    <div class="tbl-wrap">
-      <table class="compare-hl">
-        <tr><th>Attribute</th><th>Demo 01 — BTEQ</th><th>Demo 01A — TPT STREAM</th></tr>
-        <tr><td>Files per invocation</td><td>1 (one BTEQ session per file)</td><td>N (all files in manifest, one job)</td></tr>
-        <tr><td>BLOB support</td><td>Yes</td><td>Yes — STREAM is the only high-throughput operator that accepts LOBs</td></tr>
-        <tr><td>Restart / checkpoint</td><td>No</td><td>Yes (<code>PRESERVE_RESTART_INFO</code>, auto-set by STREAM)</td></tr>
-        <tr><td>Job definition</td><td>Imperative <code>.IMPORT</code> in a BTEQ script</td><td>Declarative TPT job file (<code>.tbuild</code>)</td></tr>
-        <tr><td>Before re-running</td><td>—</td><td><code>twbrmcp ttuuser</code> must clear the checkpoint, or tbuild treats the next run as a restart</td></tr>
-        <tr><td>Typical use case</td><td>Interactive, ad-hoc, 1–2 files</td><td>Automated, bulk, SLA-bound, N files</td></tr>
-      </table>
-    </div>
-
-    <div class="subhead" style="margin-top:40px;">Manifest format</div>
-    <div class="codepanel">
-      <div class="codepanel-head"><span class="fname">data/sample/avro_manifest.txt</span></div>
-      <div class="codepanel-body"><pre><code class="language-bash">stage_id|container_path
-1|/tpt/data/sample/product_v1.avro
-2|/tpt/data/sample/product_v2.avro</code></pre></div>
-    </div>
-    <ul class="bullets" style="margin-top:14px;">
-      <li>Pipe (<code>|</code>) delimiter matches <code>TextDelimiter = '|'</code> in the tbuild script.</li>
-      <li><code>stage_id</code> must be unique — it maps to the PRIMARY INDEX of <code>avro_product_stage</code>, and is
-        read as VARCHAR (DELIMITED format rejects INTEGER), then <code>CAST</code> to INTEGER in the INSERT.</li>
-      <li>Container paths are paths <strong>inside the TPT container</strong> (the <code>/tpt/...</code> bind-mount).</li>
-    </ul>
-
-    <div class="subhead" style="margin-top:40px;">How to run</div>
-    <div class="codepanel">
-      <div class="codepanel-head"><span class="fname">terminal</span></div>
-      <div class="codepanel-body"><pre><code class="language-bash">bash demos/01a-avro-blob-tpt/run.sh</code></pre></div>
-    </div>
-
-    <div class="subhead" style="margin-top:40px;">What to expect</div>
-    <div class="terminal">
-      <div class="terminal-head">
-        <span class="dot" style="background:#FF5F57"></span><span class="dot" style="background:#FEBC2E"></span><span class="dot" style="background:#28C840"></span>
-        <span class="label">bash demos/01a-avro-blob-tpt/run.sh</span>
-      </div>
-      <pre><span class="term-head2">======================================================
-  Demo 1A: Avro BLOB → Teradata DATASET column (TPT)
-======================================================</span>
-
-<span class="term-hl">── 1/4  Generating Avro container files + TPT manifest</span>
-
-<span class="term-hl">── 2/4  Clearing staging tables and TPT work tables</span>
-
-<span class="term-hl">── 3/4  Loading Avro files into Teradata (TPT STREAM, BLOB AS DEFERRED BY NAME)</span>
-      manifest: /tpt/data/sample/avro_manifest.txt (2 container files)
-      <span class="term-dim">twbrmcp ttuuser   # clears any checkpoint from a previous run</span>
-      <span class="term-ok">Job ttuuser completed successfully</span>
-      stage_id 1 = product_v1.avro (schema v1: 5 fields)
-      stage_id 2 = product_v2.avro (schema v2: 8 fields)
-
-<span class="term-hl">── 4/4  Decoding BLOBs into DATASET column and verifying</span>
-  (identical AvroContainerSplit + AVRO_CHECK output to Demo 1 — 60 rows, all OK)
-
-======================================================
-  Demo 1A complete!
-  TPT loaded both Avro container files in <span class="term-hl">one job</span>.
-======================================================</pre>
     </div>
 
   </div>
@@ -2273,17 +2138,10 @@ ORDER BY 1;</code></pre></div>
         </tr>
         <tr>
           <td><span class="tag" style="border-color:transparent;"><span class="sw" style="background:var(--c-tpt)"></span>01</span></td>
-          <td>BTEQ <code>DEFERRED BY NAME</code></td>
-          <td>Batch (file load)</td>
-          <td>Avro container → <code>DATASET</code>, schema evolution</td>
-          <td>Ad-hoc, 1–2 files, interactive</td>
-        </tr>
-        <tr>
-          <td><span class="tag" style="border-color:transparent;"><span class="sw" style="background:var(--c-tpt)"></span>01A</span></td>
           <td>TPT STREAM + DataConnector</td>
           <td>Batch (file load)</td>
-          <td>Manifest-driven, restartable, N files / job</td>
-          <td>Automated, bulk, SLA-bound loads</td>
+          <td>Avro container → <code>DATASET</code>, manifest-driven, restartable, schema evolution</td>
+          <td>Automated or ad-hoc bulk LOB file loads</td>
         </tr>
         <tr>
           <td><span class="tag" style="border-color:transparent;"><span class="sw" style="background:var(--c-kafka)"></span>02</span></td>
@@ -2368,8 +2226,7 @@ ORDER BY 1;</code></pre></div>
       <table>
         <tr><th>Doc</th><th>Covers</th></tr>
         <tr><td><code>docs/setup.md</code></td><td>Full infrastructure setup, environment variables, service ports</td></tr>
-        <tr><td><code>docs/demo01-avro-blob.md</code></td><td>BTEQ DEFERRED BY NAME, AvroContainerSplit, DATASET schema design rules</td></tr>
-        <tr><td><code>docs/demo01a-avro-blob-tpt.md</code></td><td>TPT STREAM BLOB syntax, manifest format, checkpoint/restart</td></tr>
+        <tr><td><code>docs/demo01-avro-blob.md</code></td><td>TPT STREAM BLOB syntax, manifest format, AvroContainerSplit, DATASET schema design rules, checkpoint/restart</td></tr>
         <tr><td><code>docs/demo02-kafka-tpt-stream.md</code></td><td>Kafka Access Module, <code>tbuild -l</code>, PPI target design</td></tr>
         <tr><td><code>docs/demo03-kafka-csv-minio.md</code></td><td>Kafka Connect S3 Sink, NOS PATHPATTERN, incremental loads</td></tr>
         <tr><td><code>docs/demo04-kafka-flink-iceberg.md</code></td><td>DATALAKE DDL, Flink checkpointing, <code>TD_SNAPSHOTS()</code></td></tr>

@@ -1,4 +1,5 @@
-/* Demo 1 – clear staging tables before each run */
+/* Demo 1 – clear staging tables before each run.
+   Also drops the TPT STREAM error/log tables so that tbuild can start with a clean job state. */
 .SET ERROROUT STDOUT
 .SET WIDTH 200
 .SET ERRORLEVEL 3807 SEVERITY 0   /* object not found  */
@@ -9,6 +10,9 @@ DATABASE ${TD_DATABASE};
 
 DELETE FROM avro_product_stage ALL;
 DELETE FROM avro_product ALL;
+
+DROP TABLE avro_blob_stream_log_tbl;
+DROP TABLE avro_blob_stream_err_tbl;
 
 .LOGOFF;
 .QUIT;
