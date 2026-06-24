@@ -4,6 +4,7 @@ name: td-streaming-demo
 # Teradata Streaming Demo — Docker Compose
 # ============================================================
 # Start foundation only:   docker compose up -d kafka minio minio-init
+# Start with registry:     docker compose up -d kafka minio minio-init schema-registry
 # Start all services:      docker compose up -d
 # Teradata database runs externally at TD_HOST (see .env)
 # ============================================================
@@ -207,6 +208,28 @@ services:
     volumes:
       - ./flink/jobs:/opt/flink/jobs
       - flink-jars:/opt/flink/lib/extra
+    logging: *default-logging
+
+  # ─── Schema Registry ───────────────────────────────────────
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.6.1
+    hostname: schema-registry
+    networks: [demo-net]
+    ports:
+      - "${SCHEMA_REGISTRY_PORT:-8082}:8081"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:9092
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/subjects"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
     logging: *default-logging
 
   # ─── Kafka Connect (S3 Sink for Demo 3) ────────────────────

@@ -6,7 +6,7 @@
 |-------------|-------|
 | Docker Desktop / Docker Engine 24+ | With Compose v2 (`docker compose`) |
 | Python 3.9+ | `pip install confluent-kafka fastavro boto3` |
-| Teradata instance | Vantage 20.x recommended; `dbc` user with CREATE DATABASE rights |
+| Teradata instance | Teradata 20.x recommended; `dbc` user with CREATE DATABASE rights |
 | `teradata/tpt:latest` Docker image | Teradata Parallel Transporter container (requires Teradata Developer registration) |
 
 ---
@@ -109,6 +109,7 @@ Expected output ends with `RC (return code) = 0`.
 | Service | Port | Notes |
 |---------|------|-------|
 | Kafka | 29092 | External listener (`KAFKA_EXTERNAL_PORT`) |
+| Schema Registry | 8082 | REST API (`SCHEMA_REGISTRY_PORT`) |
 | MinIO API | 9000 | S3-compatible endpoint |
 | MinIO Console | 9001 | Web UI |
 | Flink JobManager | 8081 | REST API + Web UI |

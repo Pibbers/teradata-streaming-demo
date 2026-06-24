@@ -547,14 +547,14 @@ footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--te
   <div class="wrap">
     <div class="eyebrow"><span class="dot"></span>TERADATA STREAMING DEMO &nbsp;·&nbsp; FIELD GUIDE</div>
     <h1 style="font-size:50px; line-height:1.08; margin-top:18px; max-width:880px;">
-      From Kafka to Vantage, <span style="color:var(--primary);">six different ways.</span>
+      From Kafka to Teradata, <span style="color:var(--primary);">six different ways.</span>
     </h1>
     <p style="font-size:17.5px; max-width:680px; margin-top:18px;">
       A hands-on tour of Teradata's real-time and near-real-time ingestion paths —
       Avro BLOBs, TPT&nbsp;STREAM, Kafka Connect, Apache Flink, Native Object Store, and
       Open Table Format — running on a docker-compose stack you bring up on a laptop and
       point at a real Teradata instance. Every demo here is <code>bash demos/&lt;name&gt;/run.sh</code>
-      away from a row landing in Vantage.
+      away from a row landing in Teradata.
     </p>
 
     <div style="display:flex; gap:12px; margin-top:30px; flex-wrap:wrap;">
@@ -573,7 +573,7 @@ footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--te
       <span class="tag" style="--node-c:var(--c-flink);"><span class="sw" style="background:var(--c-flink)"></span>Apache Flink</span>
       <span class="tag" style="--node-c:var(--c-hms);"><span class="sw" style="background:var(--c-hms)"></span>Hive Metastore</span>
       <span class="tag" style="--node-c:var(--c-iceberg);"><span class="sw" style="background:var(--c-iceberg)"></span>Apache Iceberg</span>
-      <span class="tag" style="--node-c:var(--c-teradata);"><span class="sw" style="background:var(--c-teradata)"></span>Teradata Vantage</span>
+      <span class="tag" style="--node-c:var(--c-teradata);"><span class="sw" style="background:var(--c-teradata)"></span>Teradata</span>
     </div>
     <p style="font-size:13px; margin-top:10px; color:var(--text-faint);">
       Every diagram in this guide reuses these colours node-for-node — like a transit map, the
@@ -680,8 +680,7 @@ footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--te
       <text x="470" y="36" text-anchor="start" class="sub" fill="var(--c-tpt)">HOT PATH</text>
       <text x="545" y="162" text-anchor="start" class="sub" fill="var(--c-flink)">COLD PATH</text>
       <rect x="760" y="10" width="190" height="230" rx="12" style="fill:var(--surface-3); stroke:var(--c-teradata); stroke-width:2.4;"></rect>
-      <text x="855" y="105" text-anchor="middle" class="lbl">Teradata</text>
-      <text x="855" y="124" text-anchor="middle" class="lbl">Vantage</text>
+      <text x="855" y="115" text-anchor="middle" class="lbl">Teradata</text>
       <text x="855" y="150" text-anchor="middle" class="sub">BFS · NOS · OTF</text>
       <text x="855" y="165" text-anchor="middle" class="sub">hot + cold,</text>
       <text x="855" y="178" text-anchor="middle" class="sub">in parallel</text>
@@ -907,8 +906,7 @@ footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--te
 
         <g class="flow-node hl">
           <rect x="978" y="160" width="172" height="120" style="stroke:var(--c-teradata); fill:var(--surface-3);"></rect>
-          <text x="1064" y="208" text-anchor="middle" class="lbl" style="font-size:13px;">Teradata</text>
-          <text x="1064" y="226" text-anchor="middle" class="lbl" style="font-size:13px;">Vantage</text>
+          <text x="1064" y="217" text-anchor="middle" class="lbl" style="font-size:13px;">Teradata</text>
           <text x="1064" y="252" text-anchor="middle" class="sub">external — on-prem,</text>
           <text x="1064" y="266" text-anchor="middle" class="sub">VantageCloud, or a VM</text>
         </g>
@@ -923,8 +921,9 @@ footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--te
             <tr><th>Requirement</th><th>Notes</th></tr>
             <tr><td>Docker Desktop / Engine 24+</td><td>With Compose v2 (<code>docker compose</code>)</td></tr>
             <tr><td>Python 3.9+</td><td><code>pip install confluent-kafka fastavro boto3</code></td></tr>
-            <tr><td>Teradata instance</td><td>Vantage 20.x recommended; <code>dbc</code> user with CREATE DATABASE rights</td></tr>
+            <tr><td>Teradata instance</td><td>Teradata 20.x recommended; <code>dbc</code> user with CREATE DATABASE rights</td></tr>
             <tr><td><code>teradata/tpt:latest</code></td><td>Requires Teradata Developer registration</td></tr>
+            <tr><td><strong>Teradata Express (TDExpress v20) — OTF</strong></td><td>Demos 04–05 require OTF feature flags to be enabled on the Teradata node — see <code>docs/setup-td-express-20.md</code></td></tr>
           </table>
         </div>
       </div>
@@ -1199,7 +1198,7 @@ Written TPT manifest → data/sample/avro_manifest.txt  (2 files)
       <div class="subhead">Demo 02 · Near-real-time streaming</div>
       <h2><span class="demo-id" style="margin-right:12px;">02</span>Kafka → TPT STREAM</h2>
       <p class="sub">A live Kafka topic, streamed into Teradata with the TPT Kafka Access Module — rows visible
-      in Vantage every ~5 seconds for as long as the feed runs.</p>
+      in Teradata every ~5 seconds for as long as the feed runs.</p>
       <div style="display:flex; gap:8px; margin-top:16px; flex-wrap:wrap;">
         <span class="tag" style="--node-c:var(--c-kafka);"><span class="sw" style="background:var(--c-kafka)"></span>Latency tier: Near real-time (200ms–5s)</span>
         <span class="tag" style="--node-c:var(--c-teradata);"><span class="sw" style="background:var(--c-teradata)"></span>Feature: <code>tbuild -l 5</code> latency flush</span>
@@ -1731,6 +1730,12 @@ bash demos/04-kafka-flink-iceberg/run.sh
 # Bounded mode — 200 messages; exits automatically
 bash demos/04-kafka-flink-iceberg/run.sh --bounded</code></pre></div>
         </div>
+        <div class="note" style="margin-top:16px; --node-c:var(--c-warn);">
+          <strong>Teradata Express prerequisite.</strong> This demo requires OTF feature flags
+          (<code>JavaOTFFlags</code>, <code>NativeOTFFlags</code>, <code>DisableMOTF</code>)
+          enabled on the Teradata node via <code>dbscontrol</code>. See
+          <code>docs/setup-td-express-20.md</code> for the full configuration reference.
+        </div>
       </div>
     </div>
 
@@ -2127,7 +2132,7 @@ ORDER BY 1;</code></pre></div>
     <div class="sec-head">
       <div class="subhead">Compare &amp; choose</div>
       <h2>Same destination, six different roads in.</h2>
-      <p class="sub">Every demo lands data in Teradata Vantage. What differs is the latency tier, the operator
+      <p class="sub">Every demo lands data in Teradata. What differs is the latency tier, the operator
       doing the work, and how much of the journey happens before Teradata ever sees a row.</p>
     </div>
 
@@ -2226,6 +2231,7 @@ ORDER BY 1;</code></pre></div>
       <table>
         <tr><th>Doc</th><th>Covers</th></tr>
         <tr><td><code>docs/setup.md</code></td><td>Full infrastructure setup, environment variables, service ports</td></tr>
+        <tr><td><strong><code>docs/setup-td-express-20.md</code></strong></td><td><strong>Teradata Express v20 — enabling OTF support: <code>JavaOTFFlags</code>, <code>NativeOTFFlags</code>, <code>DisableMOTF</code>, DNS configuration, and <code>dbscontrol</code> reference</strong></td></tr>
         <tr><td><code>docs/demo01-avro-blob.md</code></td><td>TPT STREAM BLOB syntax, manifest format, AvroContainerSplit, DATASET schema design rules, checkpoint/restart</td></tr>
         <tr><td><code>docs/demo02-kafka-tpt-stream.md</code></td><td>Kafka Access Module, <code>tbuild -l</code>, PPI target design</td></tr>
         <tr><td><code>docs/demo03-kafka-csv-minio.md</code></td><td>Kafka Connect S3 Sink, NOS PATHPATTERN, incremental loads</td></tr>
