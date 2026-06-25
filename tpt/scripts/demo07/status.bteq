@@ -8,7 +8,7 @@ DATABASE ${TD_DATABASE};
 
 SELECT 'STATUS rows=' || TRIM(CAST(COUNT(*) AS VARCHAR(10)))
     || ' latest=' || COALESCE(TRIM(CAST(MAX(ts) AS VARCHAR(30))), 'none')
-FROM adsb_positions;
+FROM adsb_positions_07;
 
 .LOGOFF;
 .QUIT;

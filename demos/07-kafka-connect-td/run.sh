@@ -15,7 +15,7 @@
 #   adsb_producer.py (--format json)
 #       → Kafka (adsb-positions-json)
 #       → Kafka Connect JDBC Sink (demo07-td-jdbc-sink)
-#       → Teradata adsb_positions
+#       → Teradata adsb_positions_07
 #
 # Credential handling:
 #   run.sh writes kafka/connect/td-credentials.properties from .env.
@@ -102,7 +102,7 @@ docker compose exec -T kafka kafka-topics \
   --bootstrap-server localhost:9092 --create --topic "$TOPIC" \
   --partitions 1 --replication-factor 1
 
-echo "      Clearing adsb_positions..."
+echo "      Clearing adsb_positions_07..."
 bteq_run /tpt/scripts/demo07/prepare.bteq
 
 # ── Step 3 ─────────────────────────────────────────────────
@@ -214,7 +214,7 @@ else
     ACTUAL=$(bteq_run /tpt/scripts/demo07/status.bteq 2>/dev/null \
       | grep "^STATUS" \
       | sed "s/.*rows=\([0-9]*\).*/\1/" || echo "0")
-    echo "      [${WAITED}s] Rows in adsb_positions: $ACTUAL / $EXPECTED"
+    echo "      [${WAITED}s] Rows in adsb_positions_07: $ACTUAL / $EXPECTED"
   done
 
   echo ""
@@ -228,13 +228,13 @@ else
   echo "    $MSG_COUNT JSON messages"
   echo "      → Kafka ($TOPIC)"
   echo "      → Kafka Connect JDBC Sink ($CONNECTOR_NAME)"
-  echo "      → Teradata ${TD_DATABASE:-demo_db}.adsb_positions"
+  echo "      → Teradata ${TD_DATABASE:-demo_db}.adsb_positions_07"
   echo ""
   echo "  No TPT, no NOS, no Flink — just Kafka Connect + JDBC."
   echo ""
   echo "  Try in Teradata Studio:"
   echo "    SELECT icao24, callsign, COUNT(*) AS positions"
-  echo "    FROM ${TD_DATABASE:-demo_db}.adsb_positions"
+  echo "    FROM ${TD_DATABASE:-demo_db}.adsb_positions_07"
   echo "    GROUP BY icao24, callsign ORDER BY positions DESC;"
   echo "======================================================"
 fi

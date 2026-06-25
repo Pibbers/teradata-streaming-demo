@@ -10,7 +10,7 @@
     "connection.password": "${file:/etc/kafka/connect-configs/td-credentials.properties:td_password}",
 
     "insert.mode": "insert",
-    "table.name.format": "adsb_positions",
+    "table.name.format": "adsb_positions_07",
     "auto.create": "false",
     "auto.evolve": "false",
 

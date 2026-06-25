@@ -1,7 +1,13 @@
 /* ============================================================
    Teradata Streaming Demo — One-time Setup Script
-   Creates the demo database, all tables, NOS authorization
-   objects, DATALAKE object, and seeds the aircraft registry.
+   Creates the demo database, shared tables, NOS authorization
+   objects, and the DATALAKE object.
+
+   Demo-specific tables managed by the demo's own prepare/setup
+   scripts (not here):
+     • adsb_positions_06  — Demo 6 prepare.bteq
+     • adsb_positions_07  — Demo 7 prepare.bteq
+     • aircraft_ref       — Demo 5 tpt/scripts/demo05/setup.bteq
 
    Variables substituted by perl before piping to BTEQ:
      ${TD_HOST}   ${TD_USER}   ${TD_PASSWORD}
@@ -97,35 +103,7 @@ CREATE MULTISET TABLE weather_obs
 )
 PRIMARY INDEX (station_id, observation_ts);
 
-/* ── 5. Demo 5: Aircraft registry (lookup reference) ──────── */
-DROP TABLE aircraft_registry;
-
-CREATE SET TABLE aircraft_registry
-(
-  icao24        CHAR(6)       NOT NULL,
-  registration  VARCHAR(10),
-  aircraft_type VARCHAR(10),
-  manufacturer  VARCHAR(50),
-  operator      VARCHAR(100),
-  country       CHAR(2),
-  engine_count  BYTEINT,
-  engine_type   VARCHAR(20)
-)
-UNIQUE PRIMARY INDEX (icao24);
-
-/* Seed registry data — matches the synthetic FLEET in adsb_producer.py */
-INSERT INTO aircraft_registry VALUES ('4ca87a','EI-FNH','A320','Airbus','Aer Lingus','IE',2,'Turbofan');
-INSERT INTO aircraft_registry VALUES ('400a5b','G-CIVB','B747','Boeing','British Airways','GB',4,'Turbofan');
-INSERT INTO aircraft_registry VALUES ('3c4b0f','D-AIHY','A321','Airbus','Lufthansa','DE',2,'Turbofan');
-INSERT INTO aircraft_registry VALUES ('3950f2','F-GKXV','A320','Airbus','Air France','FR',2,'Turbofan');
-INSERT INTO aircraft_registry VALUES ('34618a','EC-LZD','A320','Airbus','Iberia','ES',2,'Turbofan');
-INSERT INTO aircraft_registry VALUES ('4841d8','PH-BGA','B747','Boeing','KLM','NL',4,'Turbofan');
-INSERT INTO aircraft_registry VALUES ('4b1803','HB-JDA','A333','Airbus','Swiss','CH',2,'Turbofan');
-INSERT INTO aircraft_registry VALUES ('440a45','G-VWEB','A340','Airbus','Virgin Atlantic','GB',4,'Turbofan');
-INSERT INTO aircraft_registry VALUES ('4073d6','G-TUII','B787','Boeing','TUI Airways','GB',2,'Turbofan');
-INSERT INTO aircraft_registry VALUES ('3f7062','EI-DYG','B737','Boeing','Ryanair','IE',2,'Turbofan');
-
-/* ── 6. Authorization objects ────────────────────────────── */
+/* ── 5. Authorization objects ────────────────────────────── */
 /* Created inside the demo database (DATABASE ${TD_DATABASE} is active).
    FOREIGN TABLE uses EXTERNAL SECURITY DEFINER TRUSTED, which resolves
    auth objects in the same database as the table — demo_db here.        */
@@ -143,11 +121,11 @@ REPLACE AUTHORIZATION minio_storage_auth
 AS INVOKER TRUSTED
   USER '${MINIO_ROOT_USER}' PASSWORD '${MINIO_ROOT_PASSWORD}';
 
-/* ── 7. NOS Foreign Tables (Demo 3) ─────────────────────── */
+/* ── 6. NOS Foreign Tables (Demo 3) ─────────────────────── */
 /* These are created after data arrives — see Demo 3 run.sh  */
 /* Placeholder comment only; run.sh executes these dynamically */
 
-/* ── 8. DATALAKE object for Iceberg OTF (Demos 4 & 5) ───── */
+/* ── 7. DATALAKE object for Iceberg OTF (Demos 4 & 5) ───── */
 /* DATALAKE is created after Demo 4 populates Iceberg          */
 /* See demos/04-kafka-flink-iceberg/run.sh                    */
 

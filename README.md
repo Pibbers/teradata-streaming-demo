@@ -80,6 +80,7 @@ tpt/
     demo04/     # BTEQ scripts for Demo 4
     demo05/     # BTEQ scripts for Demo 5
     demo06/     # BTEQ scripts for Demo 6
+    demo07/     # BTEQ scripts for Demo 7
     run_bteq.sh        # Runs any BTEQ script with ${VAR} substitution
     run_setup.sh       # One-time Teradata setup runner
     run_tbuild.sh      # Runs a TPT tbuild job

@@ -1,12 +1,40 @@
-/* Demo 7 — clear adsb_positions before a fresh connector run */
+/* Demo 7 — create adsb_positions_07 (if not exists) and clear prior run state.
+   adsb_positions_07 is identical in schema to adsb_positions (Demo 2) but
+   named separately so the two demos can run independently without clobbering
+   each other's data. No TPT log/error tables are used (JDBC Sink manages its
+   own internal state), so there are no LT/ET tables to drop here. */
 .SET ERROROUT STDOUT
 .SET WIDTH 200
+.SET ERRORLEVEL 3807 SEVERITY 0   /* suppress "object not found" */
+.SET ERRORLEVEL 3803 SEVERITY 0   /* suppress "already exists"   */
 
 .LOGON ${TD_HOST}/${TD_USER},${TD_PASSWORD};
 
 DATABASE ${TD_DATABASE};
 
-DELETE FROM adsb_positions ALL;
+/* Create target table if it doesn't exist */
+CREATE MULTISET TABLE adsb_positions_07
+(
+  icao24        CHAR(6)          NOT NULL,
+  callsign      VARCHAR(8),
+  pos_date      DATE             NOT NULL,
+  latitude      DECIMAL(9,6)     NOT NULL,
+  longitude     DECIMAL(10,6)    NOT NULL,
+  altitude      INTEGER,
+  velocity      DECIMAL(7,2),
+  heading       DECIMAL(6,2),
+  vertical_rate INTEGER,
+  on_ground     BYTEINT          DEFAULT 0,
+  squawk        CHAR(4),
+  ts            TIMESTAMP(3)     NOT NULL,
+  ingest_ts     TIMESTAMP(0)     DEFAULT CURRENT_TIMESTAMP(0)
+)
+PRIMARY INDEX (icao24)
+PARTITION BY RANGE_N(
+  pos_date BETWEEN DATE '2024-01-01' AND DATE '2030-12-31' EACH INTERVAL '1' DAY
+);
+
+DELETE FROM adsb_positions_07 ALL;
 
 .LOGOFF;
 .QUIT;

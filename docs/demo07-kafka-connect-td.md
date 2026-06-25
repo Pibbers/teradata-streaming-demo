@@ -16,7 +16,7 @@ This completes the "three ways to get data into Teradata" story:
 
 ```
 adsb_producer.py          Kafka                  Kafka Connect           Teradata
-  (--format json)    →  adsb-positions-json  →  JDBC Sink connector  →  adsb_positions
+  (--format json)    →  adsb-positions-json  →  JDBC Sink connector  →  adsb_positions_07
 ```
 
 Key points:
@@ -79,7 +79,7 @@ CONNECT_CONFIG_PROVIDERS_FILE_CLASS: org.apache.kafka.common.config.provider.Fil
 # Stack must include kafka, kafka-connect, schema-registry, tpt
 docker compose up -d
 
-# One-time Teradata setup (creates adsb_positions table)
+# One-time Teradata setup (creates demo database and shared tables)
 bash tpt/scripts/run_setup.sh
 
 # Python producer dependency
@@ -106,7 +106,7 @@ The script:
 1. Writes `kafka/connect/td-credentials.properties` from `.env`
 2. Deletes any existing `demo07-td-jdbc-sink` connector
 3. Drops and recreates the `adsb-positions-json` Kafka topic
-4. Clears `adsb_positions` (DELETE ALL)
+4. Creates `adsb_positions_07` if absent, then clears it (DELETE ALL)
 5. Registers the connector via the Connect REST API
 6. Waits for connector + task to reach `RUNNING`
 7. Starts `adsb_producer.py --format json`
@@ -127,7 +127,7 @@ The script:
 [2026-06-25T...] 50 ADS-B messages sent to adsb-positions-json
 ...
       Producer done. Waiting for JDBC Sink to flush to Teradata...
-      [3s] Rows in adsb_positions: 200 / 200
+      [3s] Rows in adsb_positions_07: 200 / 200
 
   positions_received  earliest_ts  latest_ts  aircraft_seen
   ------------------  -----------  ---------  -------------
@@ -140,7 +140,7 @@ The script:
 |-------|-------|-----|
 | `No suitable driver found for jdbc:teradata://` | Teradata JAR on wrong classloader | Move JAR to its own plugin dir and add to `CONNECT_PLUGIN_PATH` |
 | `Authentication failed` | Wrong credentials | Check `.env` values; re-run `run.sh` to rewrite credentials file |
-| `Table 'adsb_positions' not found` | Setup not run | `bash tpt/scripts/run_setup.sh` |
+| `Table 'adsb_positions_07' not found` | prepare.bteq did not run | Check that step 2 of `run.sh` completed without error |
 | `TASK FAILED` immediately | FileConfigProvider not enabled | Ensure `CONNECT_CONFIG_PROVIDERS=file` env var is set and container restarted |
 | `Unknown schema type: float64` | Wrong Connect JSON type name | Use `"double"` (not `"float64"`) in the schema envelope; JsonConverter maps `"double"` → FLOAT64 |
 | Connector stuck in `UNASSIGNED` | Connect cluster still starting | Wait 30 s and retry; check `docker compose logs kafka-connect` |

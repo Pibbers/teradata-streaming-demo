@@ -119,13 +119,17 @@
 
 ### Future / lower priority
 
-- [ ] **Audit demo target table naming for consistency**
-  Demos currently mix table names: Demo 02 uses `adsb_positions`, Demo 07 uses
-  `adsb_positions_07` (check), Demo 06 will use `adsb_positions_06`. Audit all demos
-  and BTEQ scripts to confirm each uses a dedicated, numbered table (e.g. `adsb_positions_02`)
-  so demos are fully independent and can be run in any order without clobbering each other.
-  If any demo uses the shared `adsb_positions` table, decide whether to rename it or document
-  the coupling explicitly.
+- [x] **Audit demo target table naming for consistency**
+  Completed. Findings and fixes:
+  - Demo 7 was sharing `adsb_positions` with Demo 2 → renamed to `adsb_positions_07`
+    (connector config, prepare/status/verify BTEQ, run.sh, doc updated)
+  - `aircraft_registry` in `setup_demo_tables.bteq` was dead code (Demo 5 uses `aircraft_ref`
+    created by its own `demo05/setup.bteq`) → removed from infra script
+  - `flink/jobs/demo06_batch.sql` and `demo06_stream.sql` were exact duplicates of the
+    `flink/jobs/demo06/` subdir versions → deleted
+  - README repo layout was missing `tpt/scripts/demo07/` → added
+  - Final table ownership: `adsb_positions` (Demo 2), `adsb_positions_06` (Demo 6),
+    `adsb_positions_07` (Demo 7); all demos fully independent
 
 - [ ] **Dead-letter queue / parse-error handling pattern**
   None of the demos show what happens when a bad message arrives — schema mismatch,

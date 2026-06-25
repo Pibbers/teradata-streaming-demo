@@ -1,4 +1,4 @@
-/* Demo 7 — verify ADS-B positions inserted via Kafka Connect JDBC Sink */
+/* Demo 7 — verify ADS-B positions inserted into adsb_positions_07 via Kafka Connect JDBC Sink */
 .SET ERROROUT STDOUT
 .SET WIDTH 200
 
@@ -10,11 +10,11 @@ SELECT COUNT(*)            AS positions_received,
        MIN(ts)             AS earliest_ts,
        MAX(ts)             AS latest_ts,
        COUNT(DISTINCT icao24) AS aircraft_seen
-FROM   adsb_positions;
+FROM   adsb_positions_07;
 
 SELECT icao24, callsign, COUNT(*) AS position_count,
        AVG(CAST(altitude AS FLOAT)) AS avg_altitude_ft
-FROM   adsb_positions
+FROM   adsb_positions_07
 GROUP  BY icao24, callsign
 ORDER  BY position_count DESC;
 
