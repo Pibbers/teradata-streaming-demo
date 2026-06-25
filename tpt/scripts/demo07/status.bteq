@@ -1,0 +1,14 @@
+/* Demo 7 — single-line heartbeat for monitoring loop */
+.SET ERROROUT STDOUT
+.SET WIDTH 200
+
+.LOGON ${TD_HOST}/${TD_USER},${TD_PASSWORD};
+
+DATABASE ${TD_DATABASE};
+
+SELECT 'STATUS rows=' || TRIM(CAST(COUNT(*) AS VARCHAR(10)))
+    || ' latest=' || COALESCE(TRIM(CAST(MAX(ts) AS VARCHAR(30))), 'none')
+FROM adsb_positions;
+
+.LOGOFF;
+.QUIT;

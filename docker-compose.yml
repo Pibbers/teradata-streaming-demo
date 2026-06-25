@@ -232,7 +232,7 @@ services:
       start_period: 30s
     logging: *default-logging
 
-  # ─── Kafka Connect (S3 Sink for Demo 3) ────────────────────
+  # ─── Kafka Connect (S3 Sink — Demo 03; JDBC Sink — Demo 07) ─
   kafka-connect:
     image: td-demo-kafka-connect:latest   # built from kafka-connect/Dockerfile
     build:
@@ -247,6 +247,8 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
+      schema-registry:
+        condition: service_healthy
     environment:
       CONNECT_BOOTSTRAP_SERVERS: kafka:9092
       CONNECT_REST_PORT: 8083
@@ -261,6 +263,8 @@ services:
       CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.converters.ByteArrayConverter
       CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components
       CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
+      CONNECT_CONFIG_PROVIDERS: file
+      CONNECT_CONFIG_PROVIDERS_FILE_CLASS: org.apache.kafka.common.config.provider.FileConfigProvider
     volumes:
       - ./kafka/connect:/etc/kafka/connect-configs
     logging: *default-logging

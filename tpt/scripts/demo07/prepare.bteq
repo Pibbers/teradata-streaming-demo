@@ -1,0 +1,12 @@
+/* Demo 7 — clear adsb_positions before a fresh connector run */
+.SET ERROROUT STDOUT
+.SET WIDTH 200
+
+.LOGON ${TD_HOST}/${TD_USER},${TD_PASSWORD};
+
+DATABASE ${TD_DATABASE};
+
+DELETE FROM adsb_positions ALL;
+
+.LOGOFF;
+.QUIT;

@@ -15,6 +15,7 @@ Each demo is self-contained and runnable with a single `bash demos/<n>-<name>/ru
 | 3 | [kafka-csv-minio](docs/demo03-kafka-csv-minio.md) | Kafka Connect S3 Sink + NOS | Object store → NOS foreign table with partition pruning |
 | 4 | [kafka-flink-iceberg](docs/demo04-kafka-flink-iceberg.md) | Flink → Iceberg → OTF | Open Table Format query from Teradata via DATALAKE |
 | 5 | [flink-td-enrich](docs/demo05-flink-td-enrich.md) | Flink Lookup Join ← Teradata | In-stream enrichment from Teradata reference table |
+| 7 | [kafka-connect-td](docs/demo07-kafka-connect-td.md) | Kafka Connect JDBC Sink | Direct Kafka → Teradata insert; no TPT, Community Licence |
 
 ---
 
@@ -65,7 +66,7 @@ flink/
     demo04/     # Flink SQL scripts for Demo 4
     demo05/     # Flink SQL scripts for Demo 5
 kafka/
-  connect/      # Kafka Connect S3 Sink configuration
+  connect/      # Kafka Connect connector configs and credentials (td-credentials.properties gitignored)
   producers/    # Python producers (ADS-B, weather, Avro data generator)
   schemas/      # Avro schemas
 tpt/

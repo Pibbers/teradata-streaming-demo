@@ -1,5 +1,6 @@
 # Environment — never commit real credentials
 .env
+kafka/connect/td-credentials.properties
 
 # Generated sample data (recreated by generate_product_avro.py)
 data/sample/*.avro

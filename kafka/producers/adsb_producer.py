@@ -137,6 +137,54 @@ def encode_json(record: dict) -> bytes:
     return json.dumps(json_record).encode("utf-8")
 
 
+# Kafka Connect JSON schema envelope consumed by the JDBC Sink connector.
+# The schema is embedded in every message so JsonConverter can produce a typed
+# Struct — required because the JDBC Sink cannot map columns from a schemaless
+# HashMap.  Types mirror the adsb_positions DDL: FLOAT → float64, BYTEINT → int32,
+# VARCHAR/DATE/TIMESTAMP → string (Teradata ANSI mode casts strings to DATE/TIMESTAMP).
+_CONNECT_JSON_SCHEMA = {
+    "type": "struct",
+    "fields": [
+        {"field": "icao24",        "type": "string", "optional": True},
+        {"field": "callsign",      "type": "string", "optional": True},
+        {"field": "pos_date",      "type": "string", "optional": False},
+        {"field": "latitude",      "type": "double", "optional": False},
+        {"field": "longitude",     "type": "double", "optional": False},
+        {"field": "altitude",      "type": "double", "optional": False},
+        {"field": "velocity",      "type": "double", "optional": False},
+        {"field": "heading",       "type": "double", "optional": False},
+        {"field": "vertical_rate", "type": "double", "optional": False},
+        {"field": "on_ground",     "type": "int32",  "optional": False},
+        {"field": "squawk",        "type": "string", "optional": True},
+        {"field": "ts",            "type": "string", "optional": False},
+    ],
+    "optional": False,
+    "name": "AdsbPosition",
+}
+
+
+def encode_connect_json(record: dict) -> bytes:
+    """Serialise with a Kafka Connect JSON schema envelope for the JDBC Sink connector."""
+    ts_ms = record["ts"]
+    ts_dt = datetime.fromtimestamp(ts_ms / 1000.0, tz=timezone.utc)
+    millis = ts_ms % 1000
+    payload = {
+        "icao24":        record["icao24"],
+        "callsign":      record["callsign"],
+        "pos_date":      ts_dt.strftime("%Y-%m-%d"),
+        "latitude":      record["latitude"],
+        "longitude":     record["longitude"],
+        "altitude":      float(record["altitude"]),
+        "velocity":      record["velocity"],
+        "heading":       record["heading"],
+        "vertical_rate": float(record["vertical_rate"]),
+        "on_ground":     1 if record["on_ground"] else 0,
+        "squawk":        record["squawk"],
+        "ts":            f"{ts_dt.strftime('%Y-%m-%d %H:%M:%S')}.{millis:03d}",
+    }
+    return json.dumps({"schema": _CONNECT_JSON_SCHEMA, "payload": payload}).encode("utf-8")
+
+
 def encode_delimited(record: dict) -> bytes:
     """Serialise as pipe-delimited UTF-8 text for TPT DataConnector Format='DELIMITED'.
 
@@ -176,8 +224,9 @@ def main():
     parser.add_argument("--interval", type=float, default=5.0, help="Seconds between updates per aircraft")
     parser.add_argument("--count", type=int, default=0, help="Total messages to send (0 = unlimited)")
     parser.add_argument("--continuous", action="store_true")
-    parser.add_argument("--format", choices=["avro", "json", "delimited"], default="avro",
-                        help="avro: schemaless Avro (default); json: UTF-8 JSON; "
+    parser.add_argument("--format", choices=["avro", "json", "connect-json", "delimited"], default="avro",
+                        help="avro: schemaless Avro (default); json: plain UTF-8 JSON; "
+                             "connect-json: JSON with embedded Connect schema for JDBC Sink; "
                              "delimited: pipe-delimited text for TPT DataConnector")
     args = parser.parse_args()
 
@@ -201,6 +250,8 @@ def main():
                     payload = encode_avro(record, parsed_schema)
                 elif args.format == "json":
                     payload = encode_json(record)
+                elif args.format == "connect-json":
+                    payload = encode_connect_json(record)
                 else:
                     payload = encode_delimited(record)
                 producer.produce(args.topic, key=record["icao24"], value=payload, callback=delivery_report)

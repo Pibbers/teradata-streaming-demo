@@ -26,7 +26,7 @@
   `confluentinc/cp-schema-registry:7.6.1` service to `docker-compose.yml` (host port 8082),
   `SCHEMA_REGISTRY_PORT` to `.env.example`, and updated `docs/setup.md` ports table.
 
-- [ ] **Add Teradata JDBC Sink connector to the `kafka-connect` image (Demo 07 infrastructure)**
+- [x] **Add Teradata JDBC Sink connector to the `kafka-connect` image (Demo 07 infrastructure)**
 
   **Decision made: Option B — Confluent JDBC Sink + Teradata JDBC driver from Maven Central.**
   - Option A (`confluentinc/kafka-connect-teradata`) ruled out: uses the Confluent Software
