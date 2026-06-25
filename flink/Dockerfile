@@ -19,7 +19,9 @@ RUN curl -fsSL "${MAVEN}/org/apache/flink/flink-sql-connector-kafka/3.4.0-1.20/f
     curl -fsSL "${MAVEN}/org/apache/flink/flink-connector-jdbc/3.3.0-1.20/flink-connector-jdbc-3.3.0-1.20.jar" \
         -o /opt/flink/lib/flink-connector-jdbc.jar && \
     curl -fsSL "${MAVEN}/com/teradata/jdbc/terajdbc/20.00.00.58/terajdbc-20.00.00.58.jar" \
-        -o /opt/flink/lib/terajdbc.jar
+        -o /opt/flink/lib/terajdbc.jar && \
+    curl -fsSL "${MAVEN}/org/apache/flink/flink-sql-avro-confluent-registry/1.20.1/flink-sql-avro-confluent-registry-1.20.1.jar" \
+        -o /opt/flink/lib/flink-sql-avro-confluent-registry.jar
 
 # ── S3A FileSystem for Iceberg (separate from Flink's plugin) ───────────────
 # Iceberg HiveCatalog uses Hadoop's FileSystem API directly (not Flink's plugin

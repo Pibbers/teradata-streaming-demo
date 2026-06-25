@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-Simulates ADS-B aircraft position broadcasts and publishes them to Kafka
-as schemaless Avro messages (embedded schema, no Schema Registry).
+Simulates ADS-B aircraft position broadcasts and publishes them to Kafka.
 
 Simulates 10 aircraft flying synthetic Europe → North America routes.
 Each aircraft updates its position at --interval seconds (default 5s).
@@ -10,6 +9,7 @@ Usage:
     python adsb_producer.py [--bootstrap kafka:9092] [--topic adsb-positions]
     python adsb_producer.py --interval 2 --continuous
     python adsb_producer.py --count 200
+    python adsb_producer.py --format sr-avro --registry http://localhost:8082 --topic adsb-avro
 
 Requirements:
     pip install confluent-kafka fastavro
@@ -20,7 +20,9 @@ import io
 import json
 import math
 import random
+import struct
 import time
+import urllib.request
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -119,6 +121,36 @@ class Aircraft:
 
 def encode_avro(record: dict, parsed_schema) -> bytes:
     buf = io.BytesIO()
+    fastavro.schemaless_writer(buf, parsed_schema, record)
+    return buf.getvalue()
+
+
+_SR_SCHEMA_ID: int | None = None
+
+
+def _register_schema(registry_url: str, topic: str, schema_str: str) -> int:
+    """Register schema with Confluent Schema Registry, return schema ID."""
+    url = f"{registry_url}/subjects/{topic}-value/versions"
+    body = json.dumps({"schema": schema_str}).encode()
+    req = urllib.request.Request(
+        url, data=body,
+        headers={"Content-Type": "application/vnd.schemaregistry.v1+json"},
+    )
+    with urllib.request.urlopen(req) as resp:
+        return json.loads(resp.read())["id"]
+
+
+def encode_sr_avro(record: dict, parsed_schema, registry_url: str, topic: str) -> bytes:
+    """Encode with Confluent wire format: \\x00 + 4-byte schema ID + schemaless Avro."""
+    global _SR_SCHEMA_ID
+    if _SR_SCHEMA_ID is None:
+        with open(SCHEMA_PATH) as f:
+            schema_str = f.read()
+        _SR_SCHEMA_ID = _register_schema(registry_url, topic, schema_str)
+        print(f"[Schema Registry] Registered schema ID {_SR_SCHEMA_ID} for {topic}-value")
+    buf = io.BytesIO()
+    buf.write(b"\x00")
+    buf.write(struct.pack(">I", _SR_SCHEMA_ID))
     fastavro.schemaless_writer(buf, parsed_schema, record)
     return buf.getvalue()
 
@@ -224,14 +256,17 @@ def main():
     parser.add_argument("--interval", type=float, default=5.0, help="Seconds between updates per aircraft")
     parser.add_argument("--count", type=int, default=0, help="Total messages to send (0 = unlimited)")
     parser.add_argument("--continuous", action="store_true")
-    parser.add_argument("--format", choices=["avro", "json", "connect-json", "delimited"], default="avro",
+    parser.add_argument("--format", choices=["avro", "json", "connect-json", "delimited", "sr-avro"], default="avro",
                         help="avro: schemaless Avro (default); json: plain UTF-8 JSON; "
                              "connect-json: JSON with embedded Connect schema for JDBC Sink; "
-                             "delimited: pipe-delimited text for TPT DataConnector")
+                             "delimited: pipe-delimited text for TPT DataConnector; "
+                             "sr-avro: Confluent wire-format Avro with Schema Registry")
+    parser.add_argument("--registry", default="http://localhost:8082",
+                        help="Schema Registry base URL (used with --format sr-avro)")
     args = parser.parse_args()
 
     parsed_schema = None
-    if args.format == "avro":
+    if args.format in ("avro", "sr-avro"):
         with open(SCHEMA_PATH) as f:
             raw_schema = json.load(f)
         parsed_schema = fastavro.parse_schema(raw_schema)
@@ -248,6 +283,8 @@ def main():
                 record = ac.position()
                 if args.format == "avro":
                     payload = encode_avro(record, parsed_schema)
+                elif args.format == "sr-avro":
+                    payload = encode_sr_avro(record, parsed_schema, args.registry, args.topic)
                 elif args.format == "json":
                     payload = encode_json(record)
                 elif args.format == "connect-json":

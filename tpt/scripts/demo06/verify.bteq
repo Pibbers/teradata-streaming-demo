@@ -1,0 +1,22 @@
+/* Demo 6 — verify ADS-B positions streamed into Teradata via Flink + TPT STREAM */
+.SET ERROROUT STDOUT
+.SET WIDTH 200
+
+.LOGON ${TD_HOST}/${TD_USER},${TD_PASSWORD};
+
+DATABASE ${TD_DATABASE};
+
+SELECT COUNT(*)                AS positions_received,
+       MIN(ts)                 AS earliest_ts,
+       MAX(ts)                 AS latest_ts,
+       COUNT(DISTINCT icao24)  AS aircraft_seen
+FROM   adsb_positions_06;
+
+SELECT icao24, callsign, COUNT(*) AS position_count,
+       AVG(CAST(altitude AS FLOAT)) AS avg_altitude_ft
+FROM   adsb_positions_06
+GROUP  BY icao24, callsign
+ORDER  BY position_count DESC;
+
+.LOGOFF;
+.QUIT;

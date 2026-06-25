@@ -1,0 +1,92 @@
+/*=============================================================
+  Demo 6: Flink-pre-processed ADS-B positions from Kafka into Teradata via TPT STREAM.
+  Consumes pipe-delimited messages from 'adsb-positions-flink' — the intermediate
+  topic that Flink writes after deserialising Avro + Schema Registry messages from
+  'adsb-avro' and casting types (boolean→INT, timestamp→string, pos_date derived).
+
+  The schema and INSERT are identical to kafka_stream.tbuild (Demo 2); only the
+  target table and log/error table names differ so the demos are fully independent.
+
+  Variables (set by run_tbuild.sh from container environment):
+    TD_HOST  TD_USER  TD_PASSWORD  TD_DATABASE
+    KAFKA_BOOTSTRAP (default: kafka:9092)
+    KAFKA_TOPIC     (set to adsb-positions-flink by run.sh)
+
+  SCHEMA column order matches the Flink sink table in flink/jobs/demo06/stream.sql:
+    icao24 | callsign | latitude | longitude | altitude | velocity |
+    heading | vertical_rate | on_ground | squawk | pos_date | ts
+=============================================================*/
+
+DEFINE JOB ADSB_FLINK_TO_TERADATA
+DESCRIPTION 'Stream Flink-decoded ADS-B positions from Kafka into adsb_positions_06'
+(
+  DEFINE SCHEMA ADSB_SCHEMA
+  (
+    icao24        VARCHAR(6),
+    callsign      VARCHAR(8),
+    latitude      VARCHAR(20),    /* FLOAT delivered as text; CAST in INSERT   */
+    longitude     VARCHAR(20),
+    altitude      VARCHAR(10),    /* INTEGER delivered as text                 */
+    velocity      VARCHAR(20),
+    heading       VARCHAR(20),
+    vertical_rate VARCHAR(10),
+    on_ground     VARCHAR(1),     /* 0 or 1 as text                            */
+    squawk        VARCHAR(4),
+    pos_date      VARCHAR(10),    /* "YYYY-MM-DD"                              */
+    ts            VARCHAR(30)     /* "YYYY-MM-DD HH:MM:SS.mmm"                */
+  );
+
+  DEFINE OPERATOR KAFKA_CONSUMER
+  TYPE DATACONNECTOR PRODUCER
+  SCHEMA ADSB_SCHEMA
+  ATTRIBUTES
+  (
+    VARCHAR DirectoryPath       = '/tmp',
+    VARCHAR FileName            = 'adsb_stream_dummy',
+    VARCHAR OpenMode            = 'Read',
+    VARCHAR EnableScan          = 'No',
+    VARCHAR Format              = 'DELIMITED',
+    VARCHAR TextDelimiter       = '|',
+    VARCHAR AccessModuleName    = 'libkafkaaxsmod.so',
+    VARCHAR AccessModuleInitStr = '-M C -T $(KAFKA_TOPIC) -B $(KAFKA_BOOTSTRAP) -P 0 -W $(KAFKA_IDLE_TIMEOUT)'
+  );
+
+  DEFINE OPERATOR TD_INSERTER
+  TYPE STREAM
+  SCHEMA ADSB_SCHEMA
+  ATTRIBUTES
+  (
+    VARCHAR TdpId         = '$(TD_HOST)',
+    VARCHAR UserName      = '$(TD_USER)',
+    VARCHAR UserPassword  = '$(TD_PASSWORD)',
+    VARCHAR TargetTable   = '$(TD_DATABASE).adsb_positions_06',
+    VARCHAR LogTable      = '$(TD_DATABASE).adsb_positions_06_LT',
+    VARCHAR ErrorTable    = '$(TD_DATABASE).adsb_positions_06_ET'
+  );
+
+  STEP MAIN_STEP
+  (
+    APPLY
+    (
+      'INSERT INTO $(TD_DATABASE).adsb_positions_06
+         (icao24, callsign, pos_date, latitude, longitude,
+          altitude, velocity, heading, vertical_rate,
+          on_ground, squawk, ts)
+       VALUES
+         (:icao24,
+          :callsign,
+          CAST(:pos_date AS DATE FORMAT ''YYYY-MM-DD''),
+          CAST(:latitude AS FLOAT),
+          CAST(:longitude AS FLOAT),
+          CAST(:altitude AS INTEGER),
+          CAST(:velocity AS FLOAT),
+          CAST(:heading AS FLOAT),
+          CAST(:vertical_rate AS INTEGER),
+          CAST(:on_ground AS BYTEINT),
+          :squawk,
+          CAST(:ts AS TIMESTAMP(3) FORMAT ''YYYY-MM-DDBHH:MI:SS.S(3)''));'
+    )
+    TO OPERATOR (TD_INSERTER)
+    SELECT * FROM OPERATOR (KAFKA_CONSUMER);
+  );
+);

@@ -15,6 +15,7 @@ Each demo is self-contained and runnable with a single `bash demos/<n>-<name>/ru
 | 3 | [kafka-csv-minio](docs/demo03-kafka-csv-minio.md) | Kafka Connect S3 Sink + NOS | Object store → NOS foreign table with partition pruning |
 | 4 | [kafka-flink-iceberg](docs/demo04-kafka-flink-iceberg.md) | Flink → Iceberg → OTF | Open Table Format query from Teradata via DATALAKE |
 | 5 | [flink-td-enrich](docs/demo05-flink-td-enrich.md) | Flink Lookup Join ← Teradata | In-stream enrichment from Teradata reference table |
+| 6 | [flink-avro-tpt](docs/demo06-flink-avro-tpt.md) | Flink Avro decode → TPT STREAM | Schema Registry Avro → Flink type transforms → TPT ingest |
 | 7 | [kafka-connect-td](docs/demo07-kafka-connect-td.md) | Kafka Connect JDBC Sink | Direct Kafka → Teradata insert; no TPT, Community Licence |
 
 ---
@@ -65,6 +66,7 @@ flink/
   jobs/
     demo04/     # Flink SQL scripts for Demo 4
     demo05/     # Flink SQL scripts for Demo 5
+    demo06/     # Flink SQL scripts for Demo 6 (Avro → pipe-delimited Kafka)
 kafka/
   connect/      # Kafka Connect connector configs and credentials (td-credentials.properties gitignored)
   producers/    # Python producers (ADS-B, weather, Avro data generator)
@@ -77,6 +79,7 @@ tpt/
     demo03/     # BTEQ scripts for Demo 3
     demo04/     # BTEQ scripts for Demo 4
     demo05/     # BTEQ scripts for Demo 5
+    demo06/     # BTEQ scripts for Demo 6
     run_bteq.sh        # Runs any BTEQ script with ${VAR} substitution
     run_setup.sh       # One-time Teradata setup runner
     run_tbuild.sh      # Runs a TPT tbuild job

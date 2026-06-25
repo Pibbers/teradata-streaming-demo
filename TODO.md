@@ -5,18 +5,59 @@
 ### New demos
 
 - [ ] **Demo 06 — Flink Avro pre-processor → TPT STREAM → Teradata**
-  Kafka messages arrive as Avro (requires Schema Registry — see infrastructure task below).
-  Flink deserializes the Avro schema, flattens/transforms the record, and emits it as a
-  plain row that TPT STREAM consumes. Shows where Flink adds value *before* Teradata rather
-  than replacing it. Complements Demo 01 (Avro BLOBs from files) and Demo 02 (plain-text
-  Kafka → TPT STREAM).
 
-- [ ] **Demo 07 — Kafka Teradata Sink Connector → Teradata**
-  Land Kafka messages directly in Teradata using a Kafka Connect Teradata Sink connector —
-  no TPT involved. The `kafka-connect` service is already in the stack; this needs a
-  connector JAR added to the image and a connector config (see infrastructure task below).
-  Completes the "three ways to get data into Teradata" story alongside TPT STREAM (Demo 02)
-  and Flink (Demos 04/05).
+  **Architecture:**
+  ```
+  adsb_producer.py --format sr-avro --registry http://localhost:8082
+      → Kafka: adsb-avro  [Confluent wire Avro: \x00 + 4-byte schema ID + schemaless Avro]
+          → Flink SQL (avro-confluent source → csv/pipe-delimited sink)
+              → Kafka: adsb-positions-flink  [pipe-delimited text, same format as Demo 02]
+                  → TPT STREAM (kafka_stream_06.tbuild)
+                      → Teradata: demo_db.adsb_positions_06
+  ```
+
+  Shows where Flink adds value *before* Teradata — typed Avro deserialization,
+  boolean→INT cast, epoch-millis→TIMESTAMP, pos_date derivation — before handing off
+  to TPT STREAM for low-latency ingest. Complements Demo 02 (plain text → TPT) and
+  Demo 01 (Avro BLOBs from files).
+
+  **Schema evolution note:** Schema Registry makes schema changes *safe* (old and new
+  message versions coexist in the topic; Flink fetches the writer schema per message ID).
+  But it does not make them *automatic* — adding a field to the Avro schema also requires
+  updating the Flink SQL table definition, the pipe-delimited sink, the TPT STREAM schema,
+  and the Teradata DDL. Good demo talking point.
+
+  **Files to create / modify:**
+
+  | Action | File | Notes |
+  |--------|------|-------|
+  | Modify | `flink/Dockerfile` | Add `flink-sql-avro-confluent-registry-1.20.1.jar` from Maven Central |
+  | Modify | `kafka/producers/adsb_producer.py` | Add `sr-avro` format, `--registry` arg, `encode_sr_avro()`, schema registration via urllib |
+  | Create | `flink/jobs/demo06/stream.sql` | `avro-confluent` source → `csv`/pipe-delimited Kafka sink; no checkpointing needed |
+  | Create | `flink/jobs/demo06/batch.sql` | Same as stream.sql with `earliest-offset` for `--bounded` mode |
+  | Create | `tpt/scripts/demo06/prepare.bteq` | Full DDL for `adsb_positions_06`; drop LT/ET; DELETE ALL |
+  | Create | `tpt/scripts/demo06/verify.bteq` | COUNT(*) + TOP 5 sample from `adsb_positions_06` |
+  | Create | `tpt/scripts/demo06/status.bteq` | Single-line STATUS: N rows (mid-run heartbeat) |
+  | Create | `tpt/tbuild/kafka_stream_06.tbuild` | Copy of `kafka_stream.tbuild`; target `adsb_positions_06`, LT/ET `adsb_positions_06_LT/ET` |
+  | Create | `demos/06-flink-avro-tpt/run.sh` | Orchestration: reset → Flink job → TPT + producer → monitor → graceful drain |
+  | Create | `docs/demo06-flink-avro-tpt.md` | Documentation |
+  | Modify | `README.md` | Add Demo 06 row to demos table |
+
+  **Key design decisions:**
+  - Target table `adsb_positions_06` (not `adsb_positions`) — keeps demos fully independent
+  - Producer SR encoding: `\x00` + `struct.pack('>I', schema_id)` + schemaless Avro bytes — no new pip dependencies, uses stdlib `struct` + `urllib.request`
+  - Flink type mapping from Avro: `boolean` → `BOOLEAN` (cast to INT in INSERT); `long/timestamp-millis` → `TIMESTAMP_LTZ(3)` (formatted via `DATE_FORMAT`)
+  - Intermediate topic `adsb-positions-flink`: pipe-delimited text, identical schema to Demo 02 so TPT STREAM reuse is straightforward
+  - TPT STREAM consumes `adsb-positions-flink` with `KAFKA_IDLE_TIMEOUT=30`; exits naturally after producer stops and Flink goes quiet
+  - Requires `docker compose build flink-jobmanager flink-taskmanager` after Dockerfile change
+
+  **Risks:**
+  - `flink-sql-avro-confluent-registry` must be on Flink's classpath (lib/), not in plugins/ — verified `1.20.1` exists on Maven Central (22 MB)
+  - `DATE_FORMAT(TIMESTAMP_LTZ, ...)` is valid in Flink SQL — confirmed by Flink docs
+  - Schema registration POST to SR must happen before first produce; error surfaced immediately via `urllib.request.URLError`
+
+- [x] **Demo 07 — Kafka Teradata Sink Connector → Teradata**
+  Completed. See `demos/07-kafka-connect-td/` and `docs/demo07-kafka-connect-td.md`.
 
 ### Infrastructure
 
@@ -39,35 +80,6 @@
   **Key constraint:** `kafka-connect-jdbc` has no `TeradataDialect`. The connector uses
   `GenericDatabaseDialect`, which generates standard ANSI `INSERT INTO (cols) VALUES (?)`.
   Fine for `insert` mode. If `upsert` is needed later, a custom dialect would be required.
-
-  **Files to create / modify:**
-
-  | Action | File |
-  |--------|------|
-  | Modify | `kafka-connect/Dockerfile` |
-  | Create | `kafka/connect/td-jdbc-sink.json` |
-  | Create | `kafka/connect/td-credentials.properties` *(gitignored; written at demo runtime)* |
-  | Create | `demos/07-kafka-connect-td/run.sh` |
-  | Create | `tpt/scripts/demo07/prepare.bteq` |
-  | Create | `tpt/scripts/demo07/verify.bteq` |
-  | Create | `tpt/scripts/demo07/status.bteq` |
-  | Create | `docs/demo07-kafka-connect-td.md` |
-  | Modify | `README.md` *(add Demo 07 row to demos table)* |
-  | Modify | `.gitignore` *(exclude `kafka/connect/td-credentials.properties`)* |
-  | Modify | `docker-compose.yml` *(add `schema-registry` to `kafka-connect` depends_on)* |
-
-  **`kafka-connect/Dockerfile` change:**
-  ```dockerfile
-  FROM confluentinc/cp-kafka-connect:7.6.1
-  # S3 Sink — Demo 03
-  RUN confluent-hub install --no-prompt confluentinc/kafka-connect-s3:10.5.14
-  # JDBC Sink — Demo 07
-  RUN confluent-hub install --no-prompt confluentinc/kafka-connect-jdbc:10.9.5
-  # Teradata JDBC driver — Maven Central, placed inside the JDBC connector's own lib/
-  RUN curl -fsSL \
-      "https://repo1.maven.org/maven2/com/teradata/jdbc/terajdbc/20.00.00.58/terajdbc-20.00.00.58.jar" \
-      -o /usr/share/confluent-hub-components/confluentinc-kafka-connect-jdbc/lib/terajdbc.jar
-  ```
 
   **`kafka/connect/td-jdbc-sink.json` key design decisions:**
   - Topic: `adsb-positions-json` (separate from Demo 02's `adsb-positions`; created/destroyed
@@ -107,6 +119,14 @@
 
 ### Future / lower priority
 
+- [ ] **Audit demo target table naming for consistency**
+  Demos currently mix table names: Demo 02 uses `adsb_positions`, Demo 07 uses
+  `adsb_positions_07` (check), Demo 06 will use `adsb_positions_06`. Audit all demos
+  and BTEQ scripts to confirm each uses a dedicated, numbered table (e.g. `adsb_positions_02`)
+  so demos are fully independent and can be run in any order without clobbering each other.
+  If any demo uses the shared `adsb_positions` table, decide whether to rename it or document
+  the coupling explicitly.
+
 - [ ] **Dead-letter queue / parse-error handling pattern**
   None of the demos show what happens when a bad message arrives — schema mismatch,
   null required field, corrupt payload. Add a DLQ variant (route failed records to a
@@ -124,11 +144,8 @@
 
 | # | Task | Rationale |
 |---|------|-----------|
-| 1 | Fix "Vantage" branding in docs/README | Trivial effort; keeps docs consistent with the presentation right now |
-| 2 | Add Schema Registry to the stack | Infrastructure dependency that must land before Demo 06 can be built |
-| 3 | Add Teradata JDBC Sink connector to kafka-connect image | **Decision made**: Confluent JDBC Sink + `terajdbc` from Maven Central. See detailed plan above. |
-| 4 | Demo 07 — Kafka Teradata Sink Connector | No Schema Registry dependency; builds on existing kafka-connect service; simpler than Demo 06 |
-| 5 | Demo 06 — Flink Avro pre-processor → TPT STREAM | Depends on Schema Registry (#2); higher complexity but high demo value |
-| 6 | Update HTML presentation for demos 06 and 07 | Follows naturally once both demos are working end-to-end |
-| 7 | Dead-letter queue / error handling pattern | High real-world value but not blocking any other work; good extension of Demo 06 |
-| 8 | Second synthetic dataset | Nice to have; low urgency while all demos are still being built |
+| 1 | Demo 06 — Flink Avro pre-processor → TPT STREAM | All infrastructure dependencies (Schema Registry) already live; this is the last remaining core demo |
+| 2 | Update HTML presentation for demos 06 and 07 | Demo 07 is done; one pass after Demo 06 completes covers both |
+| 3 | Audit demo target table naming for consistency | Quick housekeeping; best done before the presentation is finalised |
+| 4 | Dead-letter queue / error handling pattern | High real-world value; best built as extension of Demo 06 while that code is fresh |
+| 5 | Second synthetic dataset | Nice to have; no blockers, low urgency while other items outstanding |
