@@ -26,14 +26,72 @@
   `confluentinc/cp-schema-registry:7.6.1` service to `docker-compose.yml` (host port 8082),
   `SCHEMA_REGISTRY_PORT` to `.env.example`, and updated `docs/setup.md` ports table.
 
-- [ ] **Add Teradata Sink connector JAR to the `kafka-connect` image**
-  Decide between: (a) the official Teradata Kafka Connector (Confluent Hub —
-  **licensing TBC**: likely requires a Confluent license; verify before use), or
-  (b) the standard Confluent JDBC Sink connector with the Teradata JDBC driver (open
-  source, but requires the JDBC driver JAR to be sourced from Teradata). Update
-  `kafka-connect/Dockerfile` accordingly. The connector config (bootstrap servers, TD
-  JDBC URL, table name mapping) will live alongside the existing S3 Sink connector
-  config in `kafka/connect/`.
+- [ ] **Add Teradata JDBC Sink connector to the `kafka-connect` image (Demo 07 infrastructure)**
+
+  **Decision made: Option B — Confluent JDBC Sink + Teradata JDBC driver from Maven Central.**
+  - Option A (`confluentinc/kafka-connect-teradata`) ruled out: uses the Confluent Software
+    Evaluation License (time-limited, non-production). Hard blocker.
+  - Option B (`confluentinc/kafka-connect-jdbc`) uses the Confluent Community License — free,
+    no registration required.
+  - Teradata JDBC driver (`terajdbc 20.00.00.58`) is on Maven Central and already pulled by
+    `flink/Dockerfile` — no manual download or Teradata portal registration needed.
+
+  **Key constraint:** `kafka-connect-jdbc` has no `TeradataDialect`. The connector uses
+  `GenericDatabaseDialect`, which generates standard ANSI `INSERT INTO (cols) VALUES (?)`.
+  Fine for `insert` mode. If `upsert` is needed later, a custom dialect would be required.
+
+  **Files to create / modify:**
+
+  | Action | File |
+  |--------|------|
+  | Modify | `kafka-connect/Dockerfile` |
+  | Create | `kafka/connect/td-jdbc-sink.json` |
+  | Create | `kafka/connect/td-credentials.properties` *(gitignored; written at demo runtime)* |
+  | Create | `demos/07-kafka-connect-td/run.sh` |
+  | Create | `tpt/scripts/demo07/prepare.bteq` |
+  | Create | `tpt/scripts/demo07/verify.bteq` |
+  | Create | `tpt/scripts/demo07/status.bteq` |
+  | Create | `docs/demo07-kafka-connect-td.md` |
+  | Modify | `README.md` *(add Demo 07 row to demos table)* |
+  | Modify | `.gitignore` *(exclude `kafka/connect/td-credentials.properties`)* |
+  | Modify | `docker-compose.yml` *(add `schema-registry` to `kafka-connect` depends_on)* |
+
+  **`kafka-connect/Dockerfile` change:**
+  ```dockerfile
+  FROM confluentinc/cp-kafka-connect:7.6.1
+  # S3 Sink — Demo 03
+  RUN confluent-hub install --no-prompt confluentinc/kafka-connect-s3:10.5.14
+  # JDBC Sink — Demo 07
+  RUN confluent-hub install --no-prompt confluentinc/kafka-connect-jdbc:10.9.5
+  # Teradata JDBC driver — Maven Central, placed inside the JDBC connector's own lib/
+  RUN curl -fsSL \
+      "https://repo1.maven.org/maven2/com/teradata/jdbc/terajdbc/20.00.00.58/terajdbc-20.00.00.58.jar" \
+      -o /usr/share/confluent-hub-components/confluentinc-kafka-connect-jdbc/lib/terajdbc.jar
+  ```
+
+  **`kafka/connect/td-jdbc-sink.json` key design decisions:**
+  - Topic: `adsb-positions-json` (separate from Demo 02's `adsb-positions`; created/destroyed
+    by the demo run script to avoid coupling)
+  - `"connector.class": "io.confluent.connect.jdbc.JdbcSinkConnector"`
+  - JDBC URL: `jdbc:teradata://<host>/DATABASE=<db>,TMODE=ANSI,CHARSET=UTF8`
+    (`TMODE=ANSI` is required — Teradata defaults to TERA mode; JDBC Sink expects ANSI
+    per-statement error semantics)
+  - Credentials via `${file:/etc/kafka/connect-configs/td-credentials.properties:td_host}`
+    (Kafka Connect external secrets mechanism; file is bind-mounted via existing volume)
+  - `"insert.mode": "insert"`, `"auto.create": "false"`, `"auto.evolve": "false"`
+    (table already created by `run_setup.sh`; `auto.create` would fail on PPI DDL)
+  - `"value.converter": "org.apache.kafka.connect.json.JsonConverter"` with
+    `"value.converter.schemas.enable": "false"` (overrides worker-level ByteArrayConverter
+    at connector scope only — Demo 03 S3 Sink is unaffected)
+  - `"fields.whitelist"` listing all columns except `ingest_ts` (the `DEFAULT
+    CURRENT_TIMESTAMP(0)` server-side column absent from Kafka records)
+
+  **Risks:**
+  - If "No suitable driver found for jdbc:teradata://" error occurs, the JAR landed on the
+    wrong classloader. Fix: move it to its own plugin dir
+    (`/usr/share/confluent-hub-components/teradata-jdbc/lib/terajdbc.jar`) and add that
+    path to `CONNECT_PLUGIN_PATH`.
+  - `upsert` mode unsupported without a custom Teradata dialect — document this in demo docs.
 
 ### Housekeeping
 
@@ -68,7 +126,7 @@
 |---|------|-----------|
 | 1 | Fix "Vantage" branding in docs/README | Trivial effort; keeps docs consistent with the presentation right now |
 | 2 | Add Schema Registry to the stack | Infrastructure dependency that must land before Demo 06 can be built |
-| 3 | Add Teradata Sink connector JAR to kafka-connect image | Infrastructure dependency for Demo 07; decision on which connector to use first |
+| 3 | Add Teradata JDBC Sink connector to kafka-connect image | **Decision made**: Confluent JDBC Sink + `terajdbc` from Maven Central. See detailed plan above. |
 | 4 | Demo 07 — Kafka Teradata Sink Connector | No Schema Registry dependency; builds on existing kafka-connect service; simpler than Demo 06 |
 | 5 | Demo 06 — Flink Avro pre-processor → TPT STREAM | Depends on Schema Registry (#2); higher complexity but high demo value |
 | 6 | Update HTML presentation for demos 06 and 07 | Follows naturally once both demos are working end-to-end |

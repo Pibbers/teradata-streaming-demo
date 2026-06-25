@@ -3,7 +3,7 @@
    HOST_IP must be the IP reachable by Teradata (the Docker host IP).
 
    MinIO path structure (from bucket root):
-     demo-csv/raw/weather-csv/YYYY-MM-DD/HH/weather-csv+0+NNNNNNNNNN.bin
+     demo-csv/raw/weather-csv/YYYY-MM-DD/HH/weather-csv+0+NNNNNNNNNN.csv
    PATHPATTERN segments matched from bucket root (not from LOCATION):
      $var1  — "raw"            (topics.dir prefix)
      $var2  — "weather-csv"    (Kafka topic / topics folder)
@@ -16,8 +16,8 @@
    - FOREIGN TABLE uses EXTERNAL SECURITY DEFINER TRUSTED minio_nos_auth.
      DEFINER TRUSTED resolves the auth object in the FOREIGN TABLE's own database
      (demo_db). INVOKER TRUSTED would look in DBC — error 6938.
-   - NOSREAD_SCHEMA is omitted: ByteArrayFormat produces .bin files which
-     Teradata cannot auto-detect as CSV; STOREDAS is not accepted in the
+   - NOSREAD_SCHEMA is omitted: ByteArrayFormat with a .csv extension still
+     passes bytes through without a schema; STOREDAS is not accepted in the
      NOSREAD_SCHEMA form of READ_NOS on 20.x. */
 .SET ERROROUT STDOUT
 .SET WIDTH 200
@@ -40,7 +40,7 @@ AS DEFINER TRUSTED
 /* ── A: List objects Kafka Connect wrote to MinIO ──────────────────────────
    NOSREAD_KEYS enumerates every object under the location prefix.
    Three files expected: one per Kafka message (flush.size=1 in the connector).
-   ByteArrayFormat writes files with a .bin extension. */
+   ByteArrayFormat with format.bytearray.extension=.csv writes .csv files. */
 SELECT location, objectlength
 FROM READ_NOS (
   USING

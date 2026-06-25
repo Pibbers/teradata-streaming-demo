@@ -214,7 +214,7 @@ fi
 
 # ── Step 5 ─────────────────────────────────────────────────
 step "5/6  NOS: list objects, create FOREIGN TABLE with PATHPATTERN, count rows"
-echo "      A) NOSREAD_KEYS  — list files (expect $WEATHER_BATCHES .bin files under $CURRENT_PARTITION/)"
+echo "      A) NOSREAD_KEYS  — list files (expect $WEATHER_BATCHES .csv files under $CURRENT_PARTITION/)"
 echo "      B) CREATE FOREIGN TABLE weather_nos_ft with PATHPATTERN"
 echo "      C) COUNT(*) over the full FOREIGN TABLE (all partitions)"
 echo ""
