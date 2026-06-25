@@ -535,6 +535,8 @@ footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--te
       <li><a href="#demo03" data-nav><span class="navnum">03</span>Kafka → NOS</a></li>
       <li><a href="#demo04" data-nav><span class="navnum">04</span>Flink → Iceberg → OTF</a></li>
       <li><a href="#demo05" data-nav><span class="navnum">05</span>Flink Lookup Enrich</a></li>
+      <li><a href="#demo06" data-nav><span class="navnum">06</span>Flink Avro → TPT</a></li>
+      <li><a href="#demo07" data-nav><span class="navnum">07</span>Kafka Connect JDBC</a></li>
       <li><a href="#compare" data-nav><span class="navnum">—</span>Compare &amp; choose</a></li>
     </ul>
     <div class="sidenav-foot">
@@ -547,13 +549,13 @@ footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--te
   <div class="wrap">
     <div class="eyebrow"><span class="dot"></span>TERADATA STREAMING DEMO &nbsp;·&nbsp; FIELD GUIDE</div>
     <h1 style="font-size:50px; line-height:1.08; margin-top:18px; max-width:880px;">
-      From Kafka to Teradata, <span style="color:var(--primary);">six different ways.</span>
+      From Kafka to Teradata, <span style="color:var(--primary);">seven different ways.</span>
     </h1>
     <p style="font-size:17.5px; max-width:680px; margin-top:18px;">
       A hands-on tour of Teradata's real-time and near-real-time ingestion paths —
-      Avro BLOBs, TPT&nbsp;STREAM, Kafka Connect, Apache Flink, Native Object Store, and
-      Open Table Format — running on a docker-compose stack you bring up on a laptop and
-      point at a real Teradata instance. Every demo here is <code>bash demos/&lt;name&gt;/run.sh</code>
+      Avro BLOBs, TPT&nbsp;STREAM, Kafka Connect JDBC Sink, Apache Flink, Confluent Schema Registry,
+      Native Object Store, and Open Table Format — running on a docker-compose stack you bring up on a
+      laptop and point at a real Teradata instance. Every demo here is <code>bash demos/&lt;name&gt;/run.sh</code>
       away from a row landing in Teradata.
     </p>
 
@@ -581,7 +583,7 @@ footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--te
     </p>
 
     <!-- demo catalog -->
-    <div class="subhead" style="margin-top:56px;">The six demos</div>
+    <div class="subhead" style="margin-top:56px;">The seven demos</div>
     <div class="grid cols3" style="grid-template-columns: repeat(3,1fr);">
 
       <a href="#demo01" class="card" style="--node-c:var(--c-tpt); display:block;">
@@ -627,6 +629,24 @@ footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--te
         </div>
         <h3 style="font-size:17px; margin-top:14px;">Flink Lookup Join ← Teradata</h3>
         <p style="font-size:13.5px; margin-top:8px;">Reverses the flow: Flink enriches each Kafka message by querying Teradata reference data in-flight.</p>
+      </a>
+
+      <a href="#demo06" class="card" style="--node-c:var(--c-flink); display:block;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span class="demo-id">06</span>
+          <span class="tag" style="border-color:transparent; padding:0;">Flink + TPT</span>
+        </div>
+        <h3 style="font-size:17px; margin-top:14px;">Kafka Avro → Flink → TPT STREAM</h3>
+        <p style="font-size:13.5px; margin-top:8px;">Flink decodes Confluent wire-format Avro (via Schema Registry) and re-emits pipe-delimited text; TPT STREAM ingests the output into Teradata.</p>
+      </a>
+
+      <a href="#demo07" class="card" style="--node-c:var(--c-connect); display:block;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span class="demo-id">07</span>
+          <span class="tag" style="border-color:transparent; padding:0;">JDBC Sink</span>
+        </div>
+        <h3 style="font-size:17px; margin-top:14px;">Kafka Connect JDBC Sink → Teradata</h3>
+        <p style="font-size:13.5px; margin-top:8px;">Connector-native ingestion: no TPT, no Flink. The Confluent JDBC Sink + Teradata JDBC driver from Maven Central, credentials via FileConfigProvider.</p>
       </a>
 
     </div>
@@ -734,20 +754,20 @@ footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--te
       </div>
     </div>
     <p style="font-size:13px; color:var(--text-faint); margin-top:6px;">
-      Demos 02, 04, and 05 in this guide all run in the near-real-time-to-high-frequency-microbatch band
-      (5–30 second end-to-end latency); Demo 03 runs as a high-frequency microbatch on a 5-minute Kafka Connect
-      flush. Demo 01 is a bulk file load and sits outside the streaming ladder entirely.
+      Demos 02 and 06 run in the near-real-time band (5-second flush); Demos 04 and 05 at 30-second checkpoint
+      granularity; Demo 07 at connector-batch cadence (seconds). Demo 03 runs as a high-frequency microbatch on
+      a 5-minute Kafka Connect flush. Demo 01 is a bulk file load and sits outside the streaming ladder entirely.
     </p>
 
-    <div class="subhead" style="margin-top:52px;">Three ways in</div>
+    <div class="subhead" style="margin-top:52px;">Five ingestion paths</div>
     <div class="grid cols3">
       <div class="card" style="--node-c:var(--c-tpt);">
         <span class="tag" style="--node-c:var(--c-tpt);"><span class="sw" style="background:var(--c-tpt)"></span>TPT</span>
         <h4 style="margin-top:12px; font-size:16px;">The streaming workhorse</h4>
-        <p style="font-size:13.5px; margin-top:8px;">The highest-throughput path into Teradata. Five tuning levers govern it in production:</p>
+        <p style="font-size:13.5px; margin-top:8px;">The highest-throughput path into Teradata (Demos&nbsp;01, 02). Five tuning levers govern it in production:</p>
         <ul class="bullets" style="margin-top:10px; gap:8px;">
           <li style="font-size:13px;"><strong>MaxSessions = AMP count</strong> — the primary throughput lever; each session maps to a parallel AMP thread.</li>
-          <li style="font-size:13px;"><strong>Format:</strong> CSV is fastest; JSON needs pre-shredding; Avro/Protobuf must be decoded upstream (Flink pre-processor).</li>
+          <li style="font-size:13px;"><strong>Format:</strong> CSV is fastest; JSON needs pre-shredding; Avro/Protobuf must be decoded upstream (Flink pre-processor — Demo&nbsp;06).</li>
           <li style="font-size:13px;"><strong>BufferCapacity:</strong> raise from the 64KB default to 1–4MB for high-throughput ingest.</li>
           <li style="font-size:13px;"><strong>ErrorLimit &gt; 0</strong> in production — at 0, one bad message halts the entire job.</li>
           <li style="font-size:13px;"><strong>TASM:</strong> a dedicated HIGH-priority workload tier keeps ingest sessions from being preempted.</li>
@@ -755,26 +775,50 @@ footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--te
       </div>
 
       <div class="card" style="--node-c:var(--c-connect);">
-        <span class="tag" style="--node-c:var(--c-connect);"><span class="sw" style="background:var(--c-connect)"></span>Kafka Connect</span>
-        <h4 style="margin-top:12px; font-size:16px;">The managed alternative</h4>
-        <p style="font-size:13.5px; margin-top:8px;">The Teradata Sink Connector — declarative, schema-aware, no TPT job scripts:</p>
+        <span class="tag" style="--node-c:var(--c-connect);"><span class="sw" style="background:var(--c-connect)"></span>Kafka Connect → NOS</span>
+        <h4 style="margin-top:12px; font-size:16px;">The object-storage path</h4>
+        <p style="font-size:13.5px; margin-top:8px;">Kafka Connect S3 Sink writes CSV/Parquet to MinIO; Teradata's Native Object Store reads them on demand (Demo&nbsp;03):</p>
         <ul class="bullets" style="margin-top:10px; gap:8px;">
-          <li style="font-size:13px; color:var(--c-ok);">Schema-aware via Schema Registry (Avro/Protobuf) — no custom deserialisation code.</li>
-          <li style="font-size:13px; color:var(--c-ok);">Auto-creates tables from the Kafka topic schema.</li>
-          <li style="font-size:13px; color:var(--c-ok);">Offset management and fault tolerance built in.</li>
-          <li style="font-size:13px; color:var(--c-warn);">Not built for extreme throughput (1B+ msg/hr) — that's TPT's job.</li>
-          <li style="font-size:13px; color:var(--c-warn);">Auto-evolution is limited: type changes and column removal aren't supported.</li>
+          <li style="font-size:13px; color:var(--c-ok);"><code>PATHPATTERN</code> partition pruning — 10–100× faster on large datasets.</li>
+          <li style="font-size:13px; color:var(--c-ok);">No copy step — Teradata reads directly from MinIO/S3.</li>
+          <li style="font-size:13px; color:var(--c-ok);">Landing-zone pattern: Teradata queries data it doesn't own or manage.</li>
+          <li style="font-size:13px; color:var(--c-warn);">No ACID — stateless file scan; no caching or warm-up between queries.</li>
+          <li style="font-size:13px; color:var(--c-warn);">Max 4 concurrent NOS reads; best for microbatch (5–30 min), not sub-second.</li>
         </ul>
       </div>
 
       <div class="card" style="--node-c:var(--c-flink);">
         <span class="tag" style="--node-c:var(--c-flink);"><span class="sw" style="background:var(--c-flink)"></span>Apache Flink</span>
         <h4 style="margin-top:12px; font-size:16px;">Three integration roles</h4>
-        <p style="font-size:13.5px; margin-top:8px;">Flink 2.0 is the de facto stream processing engine. It meets Teradata three distinct ways:</p>
+        <p style="font-size:13.5px; margin-top:8px;">Flink is the de facto stream processing engine. It meets Teradata three distinct ways (Demos&nbsp;04, 05, 06):</p>
         <ul class="bullets" style="margin-top:10px; gap:8px;">
           <li style="font-size:13px;"><strong>JDBC Lookup Enrichment</strong> — real-time lookup joins against Teradata reference data (Demo&nbsp;05).</li>
           <li style="font-size:13px;"><strong>Iceberg Writer → OTF</strong> — Flink transforms and writes Iceberg; Teradata queries it live (Demo&nbsp;04).</li>
-          <li style="font-size:13px;"><strong>Avro/Protobuf pre-processor</strong> — decodes binary formats TPT can't read natively, republishing as JSON/CSV for TPT to ingest.</li>
+          <li style="font-size:13px;"><strong>Avro/Protobuf pre-processor</strong> — decodes binary formats TPT can't read natively, republishing as pipe-delimited text for TPT to ingest (Demo&nbsp;06).</li>
+        </ul>
+      </div>
+
+      <div class="card" style="--node-c:var(--c-flink);">
+        <span class="tag" style="--node-c:var(--c-flink);"><span class="sw" style="background:var(--c-flink)"></span>Flink + TPT</span>
+        <h4 style="margin-top:12px; font-size:16px;">The binary decode bridge</h4>
+        <p style="font-size:13.5px; margin-top:8px;">Flink decodes Confluent wire-format Avro that TPT's text-only <code>DELIMITED</code> format cannot handle, then re-publishes as pipe-delimited text for TPT STREAM (Demo&nbsp;06):</p>
+        <ul class="bullets" style="margin-top:10px; gap:8px;">
+          <li style="font-size:13px;"><strong>avro-confluent source</strong> — schema fetched from Schema Registry per message ID; no static schema config.</li>
+          <li style="font-size:13px;"><strong>Type transformations in Flink SQL:</strong> <code>BOOLEAN</code> → "0"/"1", epoch-ms <code>BIGINT</code> → formatted timestamp, <code>pos_date</code> derived from same value.</li>
+          <li style="font-size:13px;"><strong>raw sink format</strong> — unquoted pipe-delimited UTF-8 via SQL <code>||</code> + <code>CHR(10)</code>; no checkpointing needed for Kafka-to-Kafka append.</li>
+        </ul>
+      </div>
+
+      <div class="card" style="--node-c:var(--c-connect);">
+        <span class="tag" style="--node-c:var(--c-connect);"><span class="sw" style="background:var(--c-connect)"></span>JDBC Sink</span>
+        <h4 style="margin-top:12px; font-size:16px;">The connector-native path</h4>
+        <p style="font-size:13.5px; margin-top:8px;">Kafka Connect JDBC Sink writes directly to Teradata via the standard JDBC driver — no TPT, no NOS, no Flink (Demo&nbsp;07):</p>
+        <ul class="bullets" style="margin-top:10px; gap:8px;">
+          <li style="font-size:13px; color:var(--c-ok);">Confluent Community License — free, no Teradata connector licence needed.</li>
+          <li style="font-size:13px; color:var(--c-ok);">Credentials via <code>FileConfigProvider</code> — never hard-coded in connector config.</li>
+          <li style="font-size:13px; color:var(--c-ok);">Declarative setup — no job scripts; config is a JSON file.</li>
+          <li style="font-size:13px; color:var(--c-warn);"><code>insert.mode=insert</code> only — no upsert without a custom <code>TeradataDialect</code>.</li>
+          <li style="font-size:13px; color:var(--c-warn);"><code>TMODE=ANSI</code> required in JDBC URL — Teradata's TERA-mode defaults are incompatible.</li>
         </ul>
       </div>
     </div>
@@ -807,8 +851,9 @@ footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--te
       </table>
     </div>
     <p style="font-size:13px; color:var(--text-faint); margin-top:10px;">
-      This guide's six demos are smaller-scale instances of the same three patterns: Demo&nbsp;05 is Pattern&nbsp;1,
-      Demo&nbsp;02 is Pattern&nbsp;2, and Demos&nbsp;03–04 together are Pattern&nbsp;3's cold path.
+      This guide's seven demos are smaller-scale instances of the same three patterns: Demo&nbsp;05 is Pattern&nbsp;1
+      (enrichment); Demos&nbsp;02 and&nbsp;07 are Pattern&nbsp;2 (real-time dashboard); Demos&nbsp;03–04 and&nbsp;06
+      build the mixed pattern — Demo&nbsp;06 via Flink + TPT, Demo&nbsp;03 via NOS, Demo&nbsp;04 via Iceberg OTF.
     </p>
 
   </div>
@@ -938,6 +983,7 @@ footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--te
             <tr><td>Flink JobManager</td><td><code>8081</code></td><td>REST API + Web UI</td></tr>
             <tr><td>Hive Metastore</td><td><code>9083</code></td><td>Thrift protocol</td></tr>
             <tr><td>Kafka Connect</td><td><code>8083</code></td><td>REST API</td></tr>
+            <tr><td>Schema Registry</td><td><code>8082</code></td><td>REST API (Confluent wire-format Avro)</td></tr>
           </table>
         </div>
       </div>
@@ -2127,11 +2173,528 @@ ORDER BY 1;</code></pre></div>
 
   </div>
 </section>
+<section id="demo06">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="subhead">Demo 06 · Avro pre-processor</div>
+      <h2><span class="demo-id" style="margin-right:12px;">06</span>Kafka Avro → Flink → TPT STREAM</h2>
+      <p class="sub">ADS-B positions are published to Kafka in Confluent wire-format Avro — schema registered in
+      Schema Registry, schema ID embedded in each message. Flink's <code>avro-confluent</code> format fetches the
+      schema per message and deserialises it into typed SQL columns, then re-emits the records as pipe-delimited
+      text to a second Kafka topic, which TPT STREAM ingests directly into Teradata. Shows where Flink adds value
+      <em>before</em> Teradata, not instead of it.</p>
+      <div style="display:flex; gap:8px; margin-top:16px; flex-wrap:wrap;">
+        <span class="tag" style="--node-c:var(--c-flink);"><span class="sw" style="background:var(--c-flink)"></span>Ingestion: Flink pre-processor + TPT STREAM</span>
+        <span class="tag" style="--node-c:var(--c-kafka);"><span class="sw" style="background:var(--c-kafka)"></span>Feature: Confluent Schema Registry · avro-confluent</span>
+      </div>
+    </div>
+
+    <div class="card" style="padding:24px 24px 16px; overflow-x:auto; margin-top:28px;">
+      <svg class="flow-svg" viewBox="0 0 1250 230" style="width:100%; min-width:920px; height:auto;">
+        <defs>
+  <marker id="arrow-d06" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="var(--border-strong)"></path>
+  </marker>
+  <marker id="arrowHl-d06" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="var(--primary)"></path>
+  </marker>
+</defs>
+<g class="flow-node">
+  <rect x="10" y="45" width="175" height="50" style="stroke:var(--c-producer)"></rect>
+  <text x="97.5" y="67.0" text-anchor="middle" class="lbl">adsb_producer.py</text>
+  <text x="97.5" y="83.0" text-anchor="middle" class="sub">--format sr-avro</text>
+</g>
+<path class="flow-edge" d="M185,70 L225,70" marker-end="url(#arrow-d06)"></path>
+<g class="flow-node">
+  <rect x="225" y="45" width="145" height="50" style="stroke:var(--c-kafka)"></rect>
+  <text x="297.5" y="67.0" text-anchor="middle" class="lbl">Kafka topic</text>
+  <text x="297.5" y="83.0" text-anchor="middle" class="sub">adsb-avro</text>
+</g>
+<path class="flow-edge" d="M370,70 L410,70" marker-end="url(#arrow-d06)"></path>
+<g class="flow-node">
+  <rect x="410" y="45" width="155" height="50" style="stroke:var(--c-flink)"></rect>
+  <text x="487.5" y="67.0" text-anchor="middle" class="lbl">Flink SQL</text>
+  <text x="487.5" y="83.0" text-anchor="middle" class="sub">avro-confluent source</text>
+</g>
+<g class="flow-node">
+  <rect x="410" y="150" width="155" height="50" style="stroke:var(--c-kafka)"></rect>
+  <text x="487.5" y="172.0" text-anchor="middle" class="lbl">Schema Registry</text>
+  <text x="487.5" y="188.0" text-anchor="middle" class="sub">:8081 · schema per ID</text>
+</g>
+<path class="flow-edge" d="M487,150 L487,95" marker-end="url(#arrow-d06)"></path>
+<text x="497" y="128" text-anchor="start" class="sub" fill="var(--c-kafka)">fetch schema</text>
+<path class="flow-edge" d="M565,70 L605,70" marker-end="url(#arrow-d06)"></path>
+<g class="flow-node">
+  <rect x="605" y="45" width="200" height="50" style="stroke:var(--c-kafka)"></rect>
+  <text x="705.0" y="67.0" text-anchor="middle" class="lbl">Kafka topic</text>
+  <text x="705.0" y="83.0" text-anchor="middle" class="sub">adsb-positions-flink</text>
+</g>
+<path class="flow-edge" d="M805,70 L845,70" marker-end="url(#arrow-d06)"></path>
+<g class="flow-node">
+  <rect x="845" y="45" width="155" height="50" style="stroke:var(--c-tpt)"></rect>
+  <text x="922.5" y="67.0" text-anchor="middle" class="lbl">TPT STREAM</text>
+  <text x="922.5" y="83.0" text-anchor="middle" class="sub">tbuild -l 5</text>
+</g>
+<path class="flow-edge active" d="M1000,70 L1045,70" marker-end="url(#arrowHl-d06)"></path>
+<text x="1022" y="60" text-anchor="middle" class="sub" fill="var(--primary)">5s flush</text>
+<g class="flow-node hl">
+  <rect x="1045" y="45" width="190" height="50" style="stroke:var(--c-teradata)"></rect>
+  <text x="1140.0" y="67.0" text-anchor="middle" class="lbl">adsb_positions_06</text>
+  <text x="1140.0" y="83.0" text-anchor="middle" class="sub">Teradata · PPI table</text>
+</g>
+      </svg>
+    </div>
+
+    <div class="cols2" style="margin-top:40px; align-items:start;">
+      <div>
+        <div class="subhead">What it demonstrates</div>
+        <ul class="bullets">
+          <li>Producer publishing <strong>Confluent wire-format Avro</strong>: <code>\x00</code> + 4-byte schema ID +
+            schemaless Avro payload, with the schema auto-registered in Schema Registry on first run — no separate
+            registration step.</li>
+          <li>Flink's <code>avro-confluent</code> format fetching the writer schema from Schema Registry
+            <strong>per message</strong> (schema ID embedded in each record) — old and new schema versions coexist
+            in the same topic.</li>
+          <li>Type transformations impossible for TPT's text-only <code>DELIMITED</code> format:
+            <code>BOOLEAN</code> → <code>"0"/"1"</code>; <code>BIGINT</code> epoch-ms → formatted timestamp via
+            <code>FROM_UNIXTIME</code> + <code>MOD</code>; <code>pos_date</code> derived from the same epoch value.</li>
+          <li>Flink as a <strong>stateless Kafka-to-Kafka bridge</strong> — no checkpointing required; the
+            <code>raw</code> sink format writes the full pipe-delimited line as a single unquoted UTF-8 string.</li>
+          <li>TPT STREAM consuming the Flink output topic <strong>identically to Demo&nbsp;02</strong> — same
+            <code>tbuild -l 5</code> latency flush, same graceful drain on Ctrl+C.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="subhead">How to run</div>
+        <div class="codepanel">
+          <div class="codepanel-head"><span class="fname">terminal</span></div>
+          <div class="codepanel-body"><pre><code class="language-bash"># Rebuild Flink (adds avro-confluent JAR — required once)
+docker compose build flink-jobmanager flink-taskmanager
+
+# Continuous streaming (default); press Ctrl+C to stop
+bash demos/06-flink-avro-tpt/run.sh
+
+# Bounded mode — 100 messages; exits automatically
+bash demos/06-flink-avro-tpt/run.sh --bounded</code></pre></div>
+        </div>
+        <div class="note" style="margin-top:16px; --node-c:var(--c-flink);">
+          <strong>Why <code>raw</code> format, not <code>csv</code>?</strong> Flink's CSV format quotes all STRING
+          fields by default (<code>"4ca87a"</code>) and <code>csv.disable-quote-character</code> is silently
+          ignored in Flink 1.20.1. The <code>raw</code> format writes a single STRING column as unquoted UTF-8
+          bytes — the pipe-delimited line is assembled in SQL with <code>||</code> concatenation + <code>CHR(10)</code>.
+        </div>
+      </div>
+    </div>
+
+    <div class="subhead" style="margin-top:44px;">How it works</div>
+    <div class="steps">
+      <div class="step" style="--node-c:var(--c-teradata)">
+        <div class="step-num">1</div>
+        <h4>Reset state</h4>
+        <p>BTEQ creates <code>adsb_positions_06</code> if absent, clears prior data and LT/ET work tables.
+        Both Kafka topics (<code>adsb-avro</code>, <code>adsb-positions-flink</code>) are deleted and recreated.</p>
+      </div>
+      <div class="step" style="--node-c:var(--c-flink)">
+        <div class="step-num">2</div>
+        <h4>Flink streaming job submits (<code style="font-size:0.85em;">stream.sql</code>)</h4>
+        <p>Source: <code>adsb-avro</code>, <code>format=avro-confluent</code>, Schema Registry at
+        <code>http://schema-registry:8081</code>. Each message's 4-byte schema ID tells Flink which writer schema
+        to use — no static schema config. Sink: <code>adsb-positions-flink</code>, <code>format=raw</code> — one
+        pipe-delimited string per record. No checkpointing needed for Kafka-to-Kafka append.</p>
+        <span class="mini">flink/jobs/demo06/stream.sql</span>
+      </div>
+      <div class="step" style="--node-c:var(--c-tpt)">
+        <div class="step-num">3</div>
+        <h4>TPT STREAM starts (background), with <code style="font-size:0.85em;">-l 5</code></h4>
+        <p>Identical to Demo&nbsp;02 — DataConnector + Kafka Access Module consume
+        <code>adsb-positions-flink</code>; STREAM operator flushes every 5 seconds into <code>adsb_positions_06</code>.</p>
+        <span class="mini">tpt/tbuild/kafka_stream_06.tbuild</span>
+      </div>
+      <div class="step" style="--node-c:var(--c-producer)">
+        <div class="step-num">4</div>
+        <h4>Python producer runs continuously</h4>
+        <p>Registers the Avro schema with Schema Registry via the REST API on first run. Each message:
+        <code>\x00</code> + 4-byte schema ID + schemaless Avro bytes. Topic: <code>adsb-avro</code>.</p>
+        <span class="mini">kafka/producers/adsb_producer.py --format sr-avro</span>
+      </div>
+      <div class="step" style="--node-c:var(--c-kafka)">
+        <div class="step-num">5</div>
+        <h4>Ctrl+C → graceful drain</h4>
+        <p>Producer killed → <code>adsb-avro</code> goes quiet → Flink stops writing to
+        <code>adsb-positions-flink</code> → TPT idle timeout (30s) fires → STREAM flushes and exits → Flink job
+        cancelled via REST API.</p>
+      </div>
+    </div>
+
+    <div class="subhead" style="margin-top:44px;">Key technical constraints</div>
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>Constraint</th><th>Detail</th></tr>
+        <tr><td><code>avro-confluent</code>, not <code>avro</code></td><td><code>avro</code> expects raw schemaless Avro; <code>avro-confluent</code> expects the 5-byte Confluent wire prefix — a mismatch causes silent decode failure.</td></tr>
+        <tr><td><code>ts</code> declared as <code>BIGINT</code></td><td><code>AvroSchemaConverter</code> in <code>flink-sql-avro-confluent-registry</code> 1.20.1 throws <code>UnsupportedOperationException</code> for <code>TIMESTAMP_LTZ</code>. <code>BIGINT</code> reads the raw epoch-ms long; <code>FROM_UNIXTIME</code> + <code>MOD</code> format it.</td></tr>
+        <tr><td>Schema Registry URL inside vs outside Docker</td><td>Producer uses <code>http://localhost:${SCHEMA_REGISTRY_PORT}</code> (host); Flink SQL uses <code>http://schema-registry:8081</code> (Docker network).</td></tr>
+        <tr><td>Flink image rebuild required</td><td><code>flink-sql-avro-confluent-registry-1.20.1.jar</code> must be in <code>/opt/flink/lib/</code> — added to <code>flink/Dockerfile</code>, requires <code>docker compose build</code>.</td></tr>
+        <tr><td>No checkpointing in <code>stream.sql</code></td><td>Kafka-to-Kafka append does not require checkpointing. Adding it would delay the first visible rows unnecessarily.</td></tr>
+        <tr><td>Target is <code>adsb_positions_06</code></td><td>Named separately from Demo&nbsp;02's <code>adsb_positions</code> so both demos are fully independent.</td></tr>
+      </table>
+    </div>
+
+    <div class="subhead" style="margin-top:44px;">Table &amp; sample queries</div>
+    <div class="codepanel" id="cp-demo06">
+      <div class="codepanel-head">
+        <div class="codepanel-tabs">
+          <button class="codepanel-tab active" onclick="showTab('cp-demo06',0)">DDL</button>
+          <button class="codepanel-tab" onclick="showTab('cp-demo06',1)">Flink SQL key</button>
+          <button class="codepanel-tab" onclick="showTab('cp-demo06',2)">queries</button>
+        </div>
+      </div>
+      <div class="codepanel-body">
+        <div class="code-view active"><pre><code class="language-sql">CREATE MULTISET TABLE adsb_positions_06 (
+  icao24        CHAR(6)       NOT NULL,
+  callsign      VARCHAR(8),
+  pos_date      DATE          NOT NULL,
+  latitude      DECIMAL(9,6)  NOT NULL,
+  longitude     DECIMAL(10,6) NOT NULL,
+  altitude      INTEGER,
+  velocity      DECIMAL(7,2),
+  heading       DECIMAL(6,2),
+  vertical_rate INTEGER,
+  on_ground     BYTEINT       DEFAULT 0,
+  squawk        CHAR(4),
+  ts            TIMESTAMP(3)  NOT NULL,
+  ingest_ts     TIMESTAMP(0)  DEFAULT CURRENT_TIMESTAMP(0)
+)
+PRIMARY INDEX (icao24)
+PARTITION BY RANGE_N(pos_date BETWEEN DATE '2024-01-01' AND DATE '2030-12-31' EACH INTERVAL '1' DAY);</code></pre></div>
+        <div class="code-view"><pre><code class="language-sql">-- Source: Confluent wire-format Avro from Schema Registry
+CREATE TEMPORARY TABLE kafka_adsb_avro (
+  icao24        STRING,
+  callsign      STRING,
+  ts            BIGINT,      -- epoch-ms; TIMESTAMP_LTZ unsupported by avro-confluent 1.20.1
+  latitude      DOUBLE,
+  longitude     DOUBLE,
+  altitude      INT,
+  velocity      DOUBLE,
+  heading       DOUBLE,
+  vertical_rate INT,
+  on_ground     BOOLEAN,
+  squawk        STRING
+) WITH (
+  'connector'          = 'kafka',
+  'topic'              = 'adsb-avro',
+  'format'             = 'avro-confluent',
+  'avro-confluent.url' = 'http://schema-registry:8081'
+);
+
+-- Sink: pipe-delimited raw text (no quoting) for TPT STREAM consumption
+INSERT INTO kafka_positions_sink
+SELECT icao24 || '|' || COALESCE(callsign,'') || '|'
+     || FROM_UNIXTIME(ts/1000,'yyyy-MM-dd') || '|'
+     || CAST(latitude AS STRING) || '|' || ...
+     || FROM_UNIXTIME(ts/1000,'yyyy-MM-dd HH:mm:ss') || '.'
+     || LPAD(CAST(MOD(ts,1000) AS STRING),3,'0') || CHR(10)
+FROM kafka_adsb_avro;</code></pre></div>
+        <div class="code-view"><pre><code class="language-sql">-- Recent position fixes
+SELECT icao24, callsign, latitude, longitude, altitude, ts
+FROM demo_db.adsb_positions_06
+WHERE pos_date = CURRENT_DATE
+ORDER BY ts DESC;
+
+-- Ingest latency (producer → Flink → TPT → Teradata)
+SELECT icao24,
+       AVG( (CAST(ingest_ts AS TIMESTAMP(3)) - ts) SECOND(4) ) AS avg_lag_secs
+FROM demo_db.adsb_positions_06
+GROUP BY 1
+ORDER BY 1;</code></pre></div>
+      </div>
+    </div>
+
+    <div class="subhead" style="margin-top:44px;">What to expect</div>
+    <div class="terminal">
+      <div class="terminal-head">
+        <span class="dot" style="background:#FF5F57"></span><span class="dot" style="background:#FEBC2E"></span><span class="dot" style="background:#28C840"></span>
+        <span class="label">bash demos/06-flink-avro-tpt/run.sh</span>
+      </div>
+      <pre><span class="term-head2">======================================================
+  Demo 6: Kafka Avro → Flink → TPT STREAM (ADS-B)
+  Avro topic:               adsb-avro
+  Flink output topic:       adsb-positions-flink
+  Schema Registry (host):   http://localhost:8082
+  Mode:                     CONTINUOUS (Ctrl+C to stop)
+======================================================</span>
+
+<span class="term-hl">── 1/4  Resetting prior state</span>
+<span class="term-hl">── 2/4  Starting Flink streaming job</span>
+      [Schema Registry] Registered schema ID 1 for adsb-avro-value
+      Flink job ID: a1b2c3d4...
+
+<span class="term-hl">── 3/4  Starting TPT STREAM and producer</span>
+
+  [12:01:15 UTC]  <span class="term-ok">STATUS rows=80 latest=2026-06-25 12:01:10.443</span>
+  [12:01:25 UTC]  <span class="term-ok">STATUS rows=180 latest=2026-06-25 12:01:20.512</span>
+  ...
+
+^C
+<span class="term-dim">── Stopping producer...
+── Waiting for TPT to drain (up to 35s after Flink goes quiet)...
+── Cancelling Flink job a1b2c3...</span>
+   <span class="term-ok">Job ttuuser completed successfully</span>
+
+<span class="term-hl">── 4/4  Final row count</span>
+  positions_received  earliest_ts              latest_ts              aircraft_seen
+  ------------------  -------------------      -------------------    -------------
+                 630  2026-06-25 12:01:05.210  2026-06-25 12:02:08    10</pre>
+    </div>
+
+    <div class="note" style="margin-top:24px; --node-c:var(--c-flink);">
+      <strong>Schema evolution note.</strong> Schema Registry makes schema changes <em>safe</em> — old and new
+      message versions coexist in the topic; Flink fetches the writer schema per message ID. But it does not
+      make them <em>automatic</em>: adding a field to the Avro schema also requires updating the Flink SQL source
+      columns, the pipe-delimited sink, the TPT STREAM schema, and the Teradata DDL. Good demo talking point.
+    </div>
+
+  </div>
+</section>
+<section id="demo07">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="subhead">Demo 07 · Connector-native ingestion</div>
+      <h2><span class="demo-id" style="margin-right:12px;">07</span>Kafka Connect JDBC Sink → Teradata</h2>
+      <p class="sub">A Kafka Connect <strong>JDBC Sink connector</strong> (Confluent Community License — no
+      Teradata licence required) inserts rows from a Kafka topic directly into a Teradata table using the standard
+      Teradata JDBC driver from Maven Central. No TPT, no NOS, no Flink — just a connector JAR, a JSON config,
+      and a credentials file.</p>
+      <div style="display:flex; gap:8px; margin-top:16px; flex-wrap:wrap;">
+        <span class="tag" style="--node-c:var(--c-connect);"><span class="sw" style="background:var(--c-connect)"></span>Ingestion: Kafka Connect JDBC Sink</span>
+        <span class="tag" style="--node-c:var(--c-teradata);"><span class="sw" style="background:var(--c-teradata)"></span>Feature: GenericDatabaseDialect · FileConfigProvider secrets</span>
+      </div>
+    </div>
+
+    <div class="card" style="padding:24px 24px 16px; overflow-x:auto; margin-top:28px;">
+      <svg class="flow-svg" viewBox="0 0 1100 130" style="width:100%; min-width:820px; height:auto;">
+        <defs>
+  <marker id="arrow-d07" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="var(--border-strong)"></path>
+  </marker>
+  <marker id="arrowHl-d07" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="var(--primary)"></path>
+  </marker>
+</defs>
+<g class="flow-node">
+  <rect x="10" y="45" width="180" height="50" style="stroke:var(--c-producer)"></rect>
+  <text x="100.0" y="67.0" text-anchor="middle" class="lbl">adsb_producer.py</text>
+  <text x="100.0" y="83.0" text-anchor="middle" class="sub">--format connect-json</text>
+</g>
+<path class="flow-edge" d="M190,70 L230,70" marker-end="url(#arrow-d07)"></path>
+<g class="flow-node">
+  <rect x="230" y="45" width="185" height="50" style="stroke:var(--c-kafka)"></rect>
+  <text x="322.5" y="67.0" text-anchor="middle" class="lbl">Kafka topic</text>
+  <text x="322.5" y="83.0" text-anchor="middle" class="sub">adsb-positions-json</text>
+</g>
+<path class="flow-edge" d="M415,70 L455,70" marker-end="url(#arrow-d07)"></path>
+<g class="flow-node">
+  <rect x="455" y="45" width="210" height="50" style="stroke:var(--c-connect)"></rect>
+  <text x="560.0" y="67.0" text-anchor="middle" class="lbl">Kafka Connect</text>
+  <text x="560.0" y="83.0" text-anchor="middle" class="sub">JDBC Sink · terajdbc</text>
+</g>
+<path class="flow-edge active" d="M665,70 L735,70" marker-end="url(#arrowHl-d07)"></path>
+<text x="700" y="60" text-anchor="middle" class="sub" fill="var(--primary)">JDBC INSERT</text>
+<g class="flow-node hl">
+  <rect x="735" y="45" width="215" height="50" style="stroke:var(--c-teradata)"></rect>
+  <text x="842.5" y="67.0" text-anchor="middle" class="lbl">adsb_positions_07</text>
+  <text x="842.5" y="83.0" text-anchor="middle" class="sub">Teradata · ANSI mode</text>
+</g>
+      </svg>
+    </div>
+
+    <div class="cols2" style="margin-top:40px; align-items:start;">
+      <div>
+        <div class="subhead">What it demonstrates</div>
+        <ul class="bullets">
+          <li>The <strong>Confluent JDBC Sink connector</strong> (Community License — free, no Teradata registration)
+            with the Teradata JDBC driver (<code>terajdbc-20.00.00.58.jar</code>) from Maven Central. No TPT job
+            scripts, no Flink, no NOS.</li>
+          <li>Producer sending <strong>Kafka Connect JSON</strong>: a
+            <code>{"schema":{...},"payload":{...}}</code> envelope that gives the connector full type information
+            without a Schema Registry.</li>
+          <li><strong>FileConfigProvider</strong> — credentials never hard-coded in the connector config; read from
+            a bind-mounted properties file at runtime via Kafka Connect's built-in secret mechanism.</li>
+          <li><code>TMODE=ANSI</code> in the JDBC URL — required because Teradata defaults to TERA mode, which
+            uses session-level transaction semantics incompatible with the connector's per-statement error handling.</li>
+          <li><code>insert.mode=insert</code> with <code>auto.create=false</code> — the target table (with PPI DDL)
+            is created by <code>run_setup.sh</code>, not the connector.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="subhead">How to run</div>
+        <div class="codepanel">
+          <div class="codepanel-head"><span class="fname">terminal</span></div>
+          <div class="codepanel-body"><pre><code class="language-bash"># Bounded: 200 messages, then verify row count (default)
+bash demos/07-kafka-connect-td/run.sh
+
+# Continuous: produce until Ctrl+C
+bash demos/07-kafka-connect-td/run.sh --continuous</code></pre></div>
+        </div>
+        <div class="note" style="margin-top:16px; --node-c:var(--c-connect);">
+          <strong>Why <code>insert.mode=insert</code> only?</strong> <code>kafka-connect-jdbc</code> has no
+          built-in <code>TeradataDialect</code>. <code>upsert</code> mode generates dialect-specific
+          <code>INSERT … ON CONFLICT</code> or <code>MERGE</code> syntax that requires a registered dialect.
+          Without one, only standard ANSI <code>INSERT INTO … VALUES (?)</code> is available.
+        </div>
+      </div>
+    </div>
+
+    <div class="subhead" style="margin-top:44px;">How it works</div>
+    <div class="steps">
+      <div class="step" style="--node-c:var(--c-teradata)">
+        <div class="step-num">1</div>
+        <h4>Setup</h4>
+        <p><code>run.sh</code> writes <code>kafka/connect/td-credentials.properties</code> from <code>.env</code>
+        values, creates the <code>adsb-positions-json</code> Kafka topic, and clears <code>adsb_positions_07</code>
+        (which <code>run_setup.sh</code> created during the one-time Teradata setup).</p>
+      </div>
+      <div class="step" style="--node-c:var(--c-connect)">
+        <div class="step-num">2</div>
+        <h4>Connector registered via REST API</h4>
+        <p>Config: <code>td-jdbc-sink.json</code>. The JDBC URL, username, and password are resolved by
+        <code>FileConfigProvider</code> from the bind-mounted credentials file — the connector JSON holds only
+        <code>${file:/etc/kafka/connect-configs/td-credentials.properties:td_host}</code> placeholders.
+        Script waits for <code>RUNNING</code> status before producing.</p>
+        <span class="mini">kafka/connect/td-jdbc-sink.json</span>
+      </div>
+      <div class="step" style="--node-c:var(--c-producer)">
+        <div class="step-num">3</div>
+        <h4>Python producer publishes Kafka Connect JSON</h4>
+        <p>Each message: <code>{"schema": {"type":"struct","fields":[...]}, "payload": {...}}</code>.
+        The <code>schemas.enable=true</code> converter option tells the JDBC Sink to treat the outer wrapper as
+        a schema envelope — all fields arrive typed.</p>
+      </div>
+      <div class="step" style="--node-c:var(--c-connect)">
+        <div class="step-num">4</div>
+        <h4>Connector inserts via JDBC</h4>
+        <p>JDBC Sink generates <code>INSERT INTO adsb_positions_07 (icao24, callsign, …) VALUES (?, ?, …)</code>
+        using <code>GenericDatabaseDialect</code>. <code>ingest_ts</code> is excluded from
+        <code>fields.whitelist</code> — the <code>DEFAULT CURRENT_TIMESTAMP(0)</code> column fills server-side.</p>
+      </div>
+    </div>
+
+    <div class="subhead" style="margin-top:44px;">Connector design decisions</div>
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>Setting</th><th>Value</th><th>Reason</th></tr>
+        <tr><td><code>connector.class</code></td><td><code>io.confluent.connect.jdbc.JdbcSinkConnector</code></td><td>Confluent Community Licence — free, no registration required.</td></tr>
+        <tr><td><code>insert.mode</code></td><td><code>insert</code></td><td>No <code>TeradataDialect</code> in <code>kafka-connect-jdbc</code>; upsert requires a custom dialect.</td></tr>
+        <tr><td><code>auto.create</code></td><td><code>false</code></td><td>Target table uses PPI DDL (<code>PARTITION BY RANGE_N</code>) which <code>auto.create</code> cannot replicate.</td></tr>
+        <tr><td><code>value.converter</code></td><td><code>JsonConverter</code> with <code>schemas.enable=true</code></td><td>Producer sends a schema envelope; connector scope only — Demo&nbsp;03 S3 Sink is unaffected.</td></tr>
+        <tr><td><code>fields.whitelist</code></td><td>All columns except <code>ingest_ts</code></td><td><code>ingest_ts</code> uses <code>DEFAULT CURRENT_TIMESTAMP(0)</code> server-side — must be absent from the INSERT.</td></tr>
+        <tr><td><code>TMODE=ANSI</code></td><td>In JDBC URL</td><td>Required for per-statement error semantics; Teradata defaults to TERA mode, which is incompatible with JDBC Sink error handling.</td></tr>
+      </table>
+    </div>
+
+    <div class="subhead" style="margin-top:44px;">Table &amp; sample queries</div>
+    <div class="codepanel" id="cp-demo07">
+      <div class="codepanel-head">
+        <div class="codepanel-tabs">
+          <button class="codepanel-tab active" onclick="showTab('cp-demo07',0)">DDL</button>
+          <button class="codepanel-tab" onclick="showTab('cp-demo07',1)">connector config</button>
+          <button class="codepanel-tab" onclick="showTab('cp-demo07',2)">queries</button>
+        </div>
+      </div>
+      <div class="codepanel-body">
+        <div class="code-view active"><pre><code class="language-sql">CREATE MULTISET TABLE adsb_positions_07 (
+  icao24        CHAR(6)       NOT NULL,
+  callsign      VARCHAR(8),
+  pos_date      DATE          NOT NULL,
+  latitude      DECIMAL(9,6)  NOT NULL,
+  longitude     DECIMAL(10,6) NOT NULL,
+  altitude      INTEGER,
+  velocity      DECIMAL(7,2),
+  heading       DECIMAL(6,2),
+  vertical_rate INTEGER,
+  on_ground     BYTEINT       DEFAULT 0,
+  squawk        CHAR(4),
+  ts            TIMESTAMP(3)  NOT NULL,
+  ingest_ts     TIMESTAMP(0)  DEFAULT CURRENT_TIMESTAMP(0)
+)
+PRIMARY INDEX (icao24)
+PARTITION BY RANGE_N(pos_date BETWEEN DATE '2024-01-01' AND DATE '2030-12-31' EACH INTERVAL '1' DAY);</code></pre></div>
+        <div class="code-view"><pre><code class="language-json">{
+  "name": "demo07-td-jdbc-sink",
+  "config": {
+    "connector.class": "io.confluent.connect.jdbc.JdbcSinkConnector",
+    "tasks.max": "1",
+    "topics": "adsb-positions-json",
+    "connection.url": "jdbc:teradata://${file:.../td-credentials.properties:td_host}/DATABASE=demo_db,TMODE=ANSI,CHARSET=UTF8",
+    "connection.user": "${file:.../td-credentials.properties:td_user}",
+    "connection.password": "${file:.../td-credentials.properties:td_password}",
+    "insert.mode": "insert",
+    "auto.create": "false",
+    "auto.evolve": "false",
+    "table.name.format": "adsb_positions_07",
+    "fields.whitelist": "icao24,callsign,pos_date,latitude,longitude,altitude,velocity,heading,vertical_rate,on_ground,squawk,ts",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "true",
+    "consumer.override.auto.offset.reset": "earliest"
+  }
+}</code></pre></div>
+        <div class="code-view"><pre><code class="language-sql">-- Row count by aircraft
+SELECT icao24, callsign, COUNT(*) AS positions
+FROM demo_db.adsb_positions_07
+GROUP BY 1, 2
+ORDER BY 3 DESC;
+
+-- Ingest latency
+SELECT icao24,
+       AVG( (CAST(ingest_ts AS TIMESTAMP(3)) - ts) SECOND(4) ) AS avg_lag_secs
+FROM demo_db.adsb_positions_07
+GROUP BY 1
+ORDER BY 1;</code></pre></div>
+      </div>
+    </div>
+
+    <div class="subhead" style="margin-top:44px;">What to expect</div>
+    <div class="terminal">
+      <div class="terminal-head">
+        <span class="dot" style="background:#FF5F57"></span><span class="dot" style="background:#FEBC2E"></span><span class="dot" style="background:#28C840"></span>
+        <span class="label">bash demos/07-kafka-connect-td/run.sh</span>
+      </div>
+      <pre><span class="term-head2">======================================================
+  Demo 7: Kafka → Kafka Connect JDBC Sink → Teradata
+  Topic:                    adsb-positions-json
+  Connector:                demo07-td-jdbc-sink
+======================================================</span>
+
+<span class="term-hl">── 1/4  Preparing — write credentials, delete/recreate topic</span>
+<span class="term-hl">── 2/4  Clearing adsb_positions_07</span>
+<span class="term-hl">── 3/4  Registering JDBC Sink connector</span>
+      Config: kafka/connect/td-jdbc-sink.json
+      Credentials: FileConfigProvider → /etc/kafka/connect-configs/td-credentials.properties
+      JDBC URL: jdbc:teradata://&lt;HOST_IP&gt;/DATABASE=demo_db,TMODE=ANSI
+      Waiting for connector+task to start.......... <span class="term-ok">RUNNING</span>
+
+<span class="term-hl">── 4/4  Publishing ADS-B positions as JSON</span>
+      Publishing 200 messages (10 aircraft × 20 cycles, 1s interval)...
+      [3s] Rows in adsb_positions_07: 200 / 200
+
+  positions_received  earliest_ts               latest_ts               aircraft_seen
+  ------------------  -------------------       -------------------     -------------
+                 200  2026-06-25 12:01:05.210   2026-06-25 12:01:24     10</pre>
+    </div>
+
+    <div class="note" style="margin-top:24px; --node-c:var(--c-connect);">
+      <strong>When to choose JDBC Sink over TPT STREAM.</strong> JDBC Sink is the right call when throughput is
+      moderate (thousands of rows per second, not billions per hour), the team prefers a declarative connector over
+      a TPT job script, and there's no requirement for upsert or advanced PPI DDL from the connector itself.
+      TPT STREAM remains the highest-throughput path when raw ingest performance is the primary constraint.
+    </div>
+
+  </div>
+</section>
 <section id="compare">
   <div class="wrap">
     <div class="sec-head">
       <div class="subhead">Compare &amp; choose</div>
-      <h2>Same destination, six different roads in.</h2>
+      <h2>Same destination, seven different roads in.</h2>
       <p class="sub">Every demo lands data in Teradata. What differs is the latency tier, the operator
       doing the work, and how much of the journey happens before Teradata ever sees a row.</p>
     </div>
@@ -2176,13 +2739,27 @@ ORDER BY 1;</code></pre></div>
           <td>Teradata as a streaming enrichment source</td>
           <td>In-flight enrichment from slow-changing dimensions</td>
         </tr>
+        <tr>
+          <td><span class="tag" style="border-color:transparent;"><span class="sw" style="background:var(--c-flink)"></span>06</span></td>
+          <td>Flink Avro pre-processor + TPT STREAM</td>
+          <td>Near real-time (5s flush)</td>
+          <td>Schema Registry · avro-confluent · Flink as binary-to-text bridge before TPT</td>
+          <td>Binary Kafka topics (Avro/Protobuf) that TPT's DELIMITED format cannot handle natively</td>
+        </tr>
+        <tr>
+          <td><span class="tag" style="border-color:transparent;"><span class="sw" style="background:var(--c-connect)"></span>07</span></td>
+          <td>Kafka Connect JDBC Sink</td>
+          <td>Near real-time (connector batch)</td>
+          <td>Connector-native, no TPT, Confluent Community License, FileConfigProvider secrets</td>
+          <td>Moderate throughput; teams preferring a managed connector over TPT job scripts</td>
+        </tr>
       </table>
     </div>
 
-    <div class="subhead" style="margin-top:56px;">BFS vs NOS vs OTF — the three storage tiers behind Demos 02–05</div>
-    <p style="max-width:760px;">Demo&nbsp;02 writes straight into Teradata's own block storage (BFS). Demo&nbsp;03
-    reads files NOS doesn't own or manage. Demos&nbsp;04–05 read a governed Iceberg table through OTF. These
-    aren't competing options — they're complementary tiers, and most real architectures use all three.</p>
+    <div class="subhead" style="margin-top:56px;">BFS vs NOS vs OTF — the three storage tiers behind Demos 02–07</div>
+    <p style="max-width:760px;">Demos&nbsp;02, 06, and 07 write straight into Teradata's own block storage (BFS).
+    Demo&nbsp;03 reads files NOS doesn't own or manage. Demos&nbsp;04–05 read a governed Iceberg table through OTF.
+    These aren't competing options — they're complementary tiers, and most real architectures use all three.</p>
 
     <div class="grid cols3" style="margin-top:20px;">
       <div class="card" style="--node-c:var(--c-teradata);">
@@ -2237,6 +2814,8 @@ ORDER BY 1;</code></pre></div>
         <tr><td><code>docs/demo03-kafka-csv-minio.md</code></td><td>Kafka Connect S3 Sink, NOS PATHPATTERN, incremental loads</td></tr>
         <tr><td><code>docs/demo04-kafka-flink-iceberg.md</code></td><td>DATALAKE DDL, Flink checkpointing, <code>TD_SNAPSHOTS()</code></td></tr>
         <tr><td><code>docs/demo05-flink-td-enrich.md</code></td><td>JDBC Lookup Join, custom Teradata Flink dialect, cache TTL</td></tr>
+        <tr><td><code>docs/demo06-flink-avro-tpt.md</code></td><td>Confluent wire-format Avro, avro-confluent Flink format, Schema Registry setup, BIGINT ts workaround, raw sink format</td></tr>
+        <tr><td><code>docs/demo07-kafka-connect-td.md</code></td><td>JDBC Sink connector config, FileConfigProvider secrets, TMODE=ANSI, GenericDatabaseDialect limitations</td></tr>
         <tr><td>Teradata DATASET Data Type — B035-1198</td><td>Avro/CSV complex data type reference</td></tr>
         <tr><td>Teradata Parallel Transporter Reference Guide — B035-2436</td><td>TPT operators, Access Modules, tbuild flags</td></tr>
         <tr><td>TPT Kafka Access Module — B035-2447</td><td>Kafka Access Module configuration reference</td></tr>
