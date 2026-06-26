@@ -93,7 +93,7 @@ tpt/
 
 ## Further reading
 
-- Teradata DATASET Data Type — B035-1198
-- Teradata Parallel Transporter Reference Guide — B035-2436
-- TPT Kafka Access Module — B035-2447
-- Teradata Native Object Store Getting Started Guide — B035-2198
+- [Teradata DATASET Data Type — B035-1198](https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/DATASET-Data-Type)
+- [Teradata Parallel Transporter Reference Guide — B035-2436](https://docs.teradata.com/r/Enterprise_IntelliFlex_Lake_VMware/Teradata-Parallel-Transporter-Reference-20.00/Teradata-PT-Utility-Commands/Overview)
+- [TPT Kafka Access Module — B035-2447](https://docs.teradata.com/r/Enterprise_IntelliFlex_Lake_VMware/Teradata-Tools-and-Utilities-Access-Module-Reference-20.00/Teradata-Access-Module-for-Kafka/Overview-of-the-Teradata-Access-Module-for-Kafka)
+- [Teradata Native Object Store Getting Started Guide — B035-2198](https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/Native-Object-Store-Getting-Started-Guide)

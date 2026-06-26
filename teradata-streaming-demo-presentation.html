@@ -771,7 +771,7 @@ footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--te
       Demo 08 adds a parallel DLQ path — bad records are sidelined without affecting the main-path latency.
     </p>
 
-    <div class="subhead" style="margin-top:52px;">Five ingestion paths</div>
+    <div class="subhead" style="margin-top:52px;">Six ingestion paths</div>
     <div class="grid cols3">
       <div class="card" style="--node-c:var(--c-tpt);">
         <span class="tag" style="--node-c:var(--c-tpt);"><span class="sw" style="background:var(--c-tpt)"></span>TPT</span>
@@ -795,7 +795,7 @@ footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--te
           <li style="font-size:13px; color:var(--c-ok);">No copy step — Teradata reads directly from MinIO/S3.</li>
           <li style="font-size:13px; color:var(--c-ok);">Landing-zone pattern: Teradata queries data it doesn't own or manage.</li>
           <li style="font-size:13px; color:var(--c-warn);">No ACID — stateless file scan; no caching or warm-up between queries.</li>
-          <li style="font-size:13px; color:var(--c-warn);">Max 4 concurrent NOS reads; best for microbatch (5–30 min), not sub-second.</li>
+          <li style="font-size:13px; color:var(--c-warn);">Best for microbatch (5–30 min), not sub-second; stateless file scan on every query.</li>
         </ul>
       </div>
 
@@ -860,13 +860,13 @@ footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--te
           <td><strong>A · Pure Stream</strong></td>
           <td>Kafka → Flink → <span style="color:var(--text);">Teradata JDBC lookup</span> → enriched stream → consumers</td>
           <td>Fraud detection, next-best-offer, real-time operational scoring</td>
-          <td>HSBC: <strong style="color:var(--c-ok);">37 hrs → 12 min</strong> fraud detection (BYOM in-database scoring)</td>
+          <td>A global bank: <strong style="color:var(--c-ok);">37 hrs → 12 min</strong> fraud detection (BYOM in-database scoring)</td>
         </tr>
         <tr>
           <td><strong>B · Mixed Ingest</strong> <span style="color:var(--text-faint); font-size:11.5px;">(most common)</span></td>
           <td>Kafka → TPT (hot) <em>and</em> Kafka → Flink → Iceberg → OTF (cold), in parallel</td>
           <td>Decoupled hot + cold paths; the majority of enterprise streaming estates</td>
-          <td>DHL: <strong style="color:var(--c-ok);">500M msg/day</strong>; European retailer EPOS streaming</td>
+          <td>A global logistics company: <strong style="color:var(--c-ok);">500M msg/day</strong>; European retailer EPOS streaming</td>
         </tr>
         <tr>
           <td><strong>C · Constrained Streaming</strong></td>
@@ -896,7 +896,7 @@ footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--te
     </div>
 
     <div class="card" style="padding:28px 28px 18px; overflow-x:auto;">
-      <svg class="flow-svg" viewBox="0 0 1180 440" style="width:100%; min-width:880px; height:auto;">
+      <svg class="flow-svg" viewBox="0 0 1180 460" style="width:100%; min-width:880px; height:auto;">
         <defs>
           <marker id="arrow-arch" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
             <path d="M0,0 L10,5 L0,10 z" fill="var(--border-strong)"></path>
@@ -907,7 +907,7 @@ footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--te
         </defs>
 
         <!-- compose network boundary -->
-        <rect x="218" y="12" width="734" height="404" rx="14" fill="none" stroke="var(--border-strong)" stroke-width="1.6" stroke-dasharray="3 5"></rect>
+        <rect x="218" y="12" width="734" height="424" rx="14" fill="none" stroke="var(--border-strong)" stroke-width="1.6" stroke-dasharray="3 5"></rect>
         <text x="234" y="34" class="sub" style="font-size:10.5px; letter-spacing:.08em;">DOCKER COMPOSE · demo-net</text>
 
         <!-- teradata external boundary -->
@@ -924,6 +924,10 @@ footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--te
         <path class="flow-edge" d="M650,378 L740,378" marker-end="url(#arrow-arch)"></path>
         <path class="flow-edge active" d="M900,215 L980,215" marker-end="url(#arrowHl-arch)"></path>
         <path class="flow-edge active" d="M900,378 L980,205" marker-end="url(#arrowHl-arch)"></path>
+        <!-- JDBC Sink: Kafka Connect → Teradata direct (Demo 07) -->
+        <path class="flow-edge active" d="M650,225 C 720,295 940,295 980,260" marker-end="url(#arrowHl-arch)"></path>
+        <!-- Flink JDBC enrichment: Flink → Teradata direct (Demo 05) -->
+        <path class="flow-edge active" d="M650,380 C 760,435 940,435 980,270" marker-end="url(#arrowHl-arch)"></path>
 
         <!-- edge labels -->
         <text x="408" y="58" class="sub">publish</text>
@@ -933,6 +937,8 @@ footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--te
         <text x="660" y="372" class="sub">Parquet write</text>
         <text x="660" y="395" class="sub">catalog (Thrift :9083)</text>
         <text x="905" y="395" class="lbl" fill="var(--c-iceberg)">OTF / DATALAKE</text>
+        <text x="722" y="308" class="lbl" fill="var(--c-connect)">JDBC Sink</text>
+        <text x="700" y="448" class="lbl" fill="var(--c-flink)">JDBC enrich</text>
 
         <!-- nodes -->
         <g class="flow-node">
@@ -956,7 +962,7 @@ footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--te
         <g class="flow-node">
           <rect x="470" y="190" width="180" height="50" style="stroke:var(--c-connect)"></rect>
           <text x="560" y="211" text-anchor="middle" class="lbl">Kafka Connect</text>
-          <text x="560" y="227" text-anchor="middle" class="sub">S3 Sink connector · :8083</text>
+          <text x="560" y="227" text-anchor="middle" class="sub">S3 Sink / JDBC Sink · :8083</text>
         </g>
 
         <g class="flow-node">
@@ -996,7 +1002,7 @@ footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--te
             <tr><td>Python 3.9+</td><td><code>pip install confluent-kafka fastavro boto3</code></td></tr>
             <tr><td>Teradata instance</td><td>Teradata 20.x recommended; <code>dbc</code> user with CREATE DATABASE rights</td></tr>
             <tr><td><code>teradata/tpt:latest</code></td><td>Requires Teradata Developer registration</td></tr>
-            <tr><td><strong>Teradata Express (TDExpress v20) — OTF</strong></td><td>Demos 04–05 require OTF feature flags to be enabled on the Teradata node — see <code>docs/setup-td-express-20.md</code></td></tr>
+            <tr><td>Teradata Express (TDExpress v20) — OTF</td><td>Demos 04–05 require OTF feature flags to be enabled on the Teradata node — see <code>docs/setup-td-express-20.md</code></td></tr>
           </table>
         </div>
       </div>
@@ -1476,7 +1482,7 @@ ORDER BY 1;</code></pre></div>
     <div class="note" style="margin-top:24px; --node-c:var(--c-tpt);">
       <strong>Where this sits on the latency ladder.</strong> Teradata's near-real-time tier (TPT STREAM,
       200ms–5s) sits between true real-time (custom in-database apps, ≤µs) and microbatch (TPT STREAM
-      configured for longer intervals, or the TPT Update operator on a 5–15 minute cadence). DHL's production
+      configured for longer intervals, or the TPT Update operator on a 5–15 minute cadence). A global logistics company's production
       deployment of this exact pattern — Kafka + TPT STREAM, 17 source systems — sustained
       <strong>6,200 rows/sec at 0.2% additional Teradata CPU</strong>.
     </div>
@@ -1713,7 +1719,7 @@ ORDER BY station_id;</code></pre></div>
     <div class="note" style="margin-top:24px; --node-c:var(--c-iceberg);">
       <strong>NOS asks "can I read this file?" — it doesn't ask "can I trust this table?"</strong> NOS is a
       stateless, schema-at-query-time read of raw files: no ACID, no caching, no warm-up benefit between
-      queries, max 4 concurrent reads. That's exactly right for a landing zone you don't own the lifecycle of
+      queries. That's exactly right for a landing zone you don't own the lifecycle of
       — which is why this demo is a good fit, and why Demo&nbsp;04 reaches for Open Table Format instead once
       the requirement shifts to a governed, multi-engine table. See the comparison at the bottom of this guide.
     </div>
