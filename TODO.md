@@ -131,11 +131,12 @@
   - Final table ownership: `adsb_positions` (Demo 2), `adsb_positions_06` (Demo 6),
     `adsb_positions_07` (Demo 7); all demos fully independent
 
-- [ ] **Dead-letter queue / parse-error handling pattern**
-  None of the demos show what happens when a bad message arrives — schema mismatch,
-  null required field, corrupt payload. Add a DLQ variant (route failed records to a
-  separate Kafka topic or a Teradata error table) as an extension of Demo 06 or a
-  standalone demo. Important for real-world credibility.
+- [x] **Dead-letter queue / parse-error handling pattern**
+  Completed as Demo 08. See `demos/08-dlq-pattern/` and `docs/demo08-dlq-pattern.md`.
+  Uses Kafka Connect `errors.tolerance=all` + `errors.deadletterqueue.topic.name` to
+  route bad records (null latitude → NOT NULL violation) to `adsb-positions-dlq-demo.dlq`
+  while valid records flow to Teradata `adsb_positions_08`. `adsb_producer.py` gains
+  `--inject-errors N` to inject malformed records deterministically.
 
 - [ ] **Second synthetic dataset**
   All five demos share the ADS-B aircraft dataset. A second schema (e.g. IoT sensor

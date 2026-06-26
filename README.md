@@ -17,6 +17,7 @@ Each demo is self-contained and runnable with a single `bash demos/<n>-<name>/ru
 | 5 | [flink-td-enrich](docs/demo05-flink-td-enrich.md) | Flink Lookup Join ← Teradata | In-stream enrichment from Teradata reference table |
 | 6 | [flink-avro-tpt](docs/demo06-flink-avro-tpt.md) | Flink Avro decode → TPT STREAM | Schema Registry Avro → Flink type transforms → TPT ingest |
 | 7 | [kafka-connect-td](docs/demo07-kafka-connect-td.md) | Kafka Connect JDBC Sink | Direct Kafka → Teradata insert; no TPT, Community Licence |
+| 8 | [dlq-pattern](docs/demo08-dlq-pattern.md) | Kafka Connect JDBC Sink + DLQ | errors.tolerance=all routes bad records to a dead-letter topic |
 
 ---
 
@@ -81,6 +82,7 @@ tpt/
     demo05/     # BTEQ scripts for Demo 5
     demo06/     # BTEQ scripts for Demo 6
     demo07/     # BTEQ scripts for Demo 7
+    demo08/     # BTEQ scripts for Demo 8
     run_bteq.sh        # Runs any BTEQ script with ${VAR} substitution
     run_setup.sh       # One-time Teradata setup runner
     run_tbuild.sh      # Runs a TPT tbuild job

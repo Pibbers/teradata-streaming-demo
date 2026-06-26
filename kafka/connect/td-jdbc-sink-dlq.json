@@ -1,0 +1,30 @@
+{
+  "name": "demo08-td-jdbc-sink-dlq",
+  "config": {
+    "connector.class": "io.confluent.connect.jdbc.JdbcSinkConnector",
+    "tasks.max": "1",
+    "topics": "adsb-positions-dlq-demo",
+
+    "connection.url": "jdbc:teradata://${file:/etc/kafka/connect-configs/td-credentials.properties:td_host}/DATABASE=${file:/etc/kafka/connect-configs/td-credentials.properties:td_database},TMODE=ANSI",
+    "connection.user": "${file:/etc/kafka/connect-configs/td-credentials.properties:td_user}",
+    "connection.password": "${file:/etc/kafka/connect-configs/td-credentials.properties:td_password}",
+
+    "insert.mode": "insert",
+    "table.name.format": "adsb_positions_08",
+    "auto.create": "false",
+    "auto.evolve": "false",
+
+    "fields.whitelist": "icao24,callsign,pos_date,latitude,longitude,altitude,velocity,heading,vertical_rate,on_ground,squawk,ts",
+
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "true",
+
+    "consumer.override.auto.offset.reset": "earliest",
+
+    "errors.tolerance": "all",
+    "errors.deadletterqueue.topic.name": "adsb-positions-dlq-demo.dlq",
+    "errors.deadletterqueue.context.headers.enable": "true",
+    "errors.log.enable": "true",
+    "errors.log.include.messages": "true"
+  }
+}

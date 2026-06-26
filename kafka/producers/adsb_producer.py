@@ -195,8 +195,12 @@ _CONNECT_JSON_SCHEMA = {
 }
 
 
-def encode_connect_json(record: dict) -> bytes:
-    """Serialise with a Kafka Connect JSON schema envelope for the JDBC Sink connector."""
+def encode_connect_json(record: dict, inject_error: bool = False) -> bytes:
+    """Serialise with a Kafka Connect JSON schema envelope for the JDBC Sink connector.
+
+    When inject_error is True, latitude is set to None — a NOT NULL column in Teradata.
+    The JDBC Sink will reject the row and route it to the dead-letter topic (if configured).
+    """
     ts_ms = record["ts"]
     ts_dt = datetime.fromtimestamp(ts_ms / 1000.0, tz=timezone.utc)
     millis = ts_ms % 1000
@@ -204,7 +208,7 @@ def encode_connect_json(record: dict) -> bytes:
         "icao24":        record["icao24"],
         "callsign":      record["callsign"],
         "pos_date":      ts_dt.strftime("%Y-%m-%d"),
-        "latitude":      record["latitude"],
+        "latitude":      None if inject_error else record["latitude"],
         "longitude":     record["longitude"],
         "altitude":      float(record["altitude"]),
         "velocity":      record["velocity"],
@@ -263,6 +267,10 @@ def main():
                              "sr-avro: Confluent wire-format Avro with Schema Registry")
     parser.add_argument("--registry", default="http://localhost:8082",
                         help="Schema Registry base URL (used with --format sr-avro)")
+    parser.add_argument("--inject-errors", type=int, default=0, metavar="N",
+                        help="Every N-th message (connect-json format only) has latitude=null, "
+                             "forcing a JDBC NOT NULL violation. Use with a DLQ-enabled connector. "
+                             "0 = disabled (default).")
     args = parser.parse_args()
 
     parsed_schema = None
@@ -288,7 +296,8 @@ def main():
                 elif args.format == "json":
                     payload = encode_json(record)
                 elif args.format == "connect-json":
-                    payload = encode_connect_json(record)
+                    inject = args.inject_errors > 0 and (sent % args.inject_errors == 0)
+                    payload = encode_connect_json(record, inject_error=inject)
                 else:
                     payload = encode_delimited(record)
                 producer.produce(args.topic, key=record["icao24"], value=payload, callback=delivery_report)
