@@ -1,4 +1,5 @@
 {
+  "_comment": "aws.access.key.id and aws.secret.access.key are the default MinIO credentials for the local demo stack — NOT real AWS credentials. MinIO is not exposed outside the Docker network. Change these if you customise MINIO_ROOT_USER / MINIO_ROOT_PASSWORD in .env.",
   "name": "demo-weather-s3-sink",
   "config": {
     "connector.class": "io.confluent.connect.s3.S3SinkConnector",

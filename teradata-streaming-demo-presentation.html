@@ -537,6 +537,7 @@ footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--te
       <li><a href="#demo05" data-nav><span class="navnum">05</span>Flink Lookup Enrich</a></li>
       <li><a href="#demo06" data-nav><span class="navnum">06</span>Flink Avro → TPT</a></li>
       <li><a href="#demo07" data-nav><span class="navnum">07</span>Kafka Connect JDBC</a></li>
+      <li><a href="#demo08" data-nav><span class="navnum">08</span>DLQ — Error Handling</a></li>
       <li><a href="#compare" data-nav><span class="navnum">—</span>Compare &amp; choose</a></li>
     </ul>
     <div class="sidenav-foot">
@@ -549,14 +550,14 @@ footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--te
   <div class="wrap">
     <div class="eyebrow"><span class="dot"></span>TERADATA STREAMING DEMO &nbsp;·&nbsp; FIELD GUIDE</div>
     <h1 style="font-size:50px; line-height:1.08; margin-top:18px; max-width:880px;">
-      From Kafka to Teradata, <span style="color:var(--primary);">seven different ways.</span>
+      From Kafka to Teradata, <span style="color:var(--primary);">eight different ways.</span>
     </h1>
     <p style="font-size:17.5px; max-width:680px; margin-top:18px;">
       A hands-on tour of Teradata's real-time and near-real-time ingestion paths —
       Avro BLOBs, TPT&nbsp;STREAM, Kafka Connect JDBC Sink, Apache Flink, Confluent Schema Registry,
-      Native Object Store, and Open Table Format — running on a docker-compose stack you bring up on a
-      laptop and point at a real Teradata instance. Every demo here is <code>bash demos/&lt;name&gt;/run.sh</code>
-      away from a row landing in Teradata.
+      Native Object Store, Open Table Format, and production-grade dead-letter queue error handling — running on a
+      docker-compose stack you bring up on a laptop and point at a real Teradata instance.
+      Every demo here is <code>bash demos/&lt;name&gt;/run.sh</code> away from a row landing in Teradata.
     </p>
 
     <div style="display:flex; gap:12px; margin-top:30px; flex-wrap:wrap;">
@@ -583,7 +584,7 @@ footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--te
     </p>
 
     <!-- demo catalog -->
-    <div class="subhead" style="margin-top:56px;">The seven demos</div>
+    <div class="subhead" style="margin-top:56px;">The eight demos</div>
     <div class="grid cols3" style="grid-template-columns: repeat(3,1fr);">
 
       <a href="#demo01" class="card" style="--node-c:var(--c-tpt); display:block;">
@@ -649,6 +650,15 @@ footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--te
         <p style="font-size:13.5px; margin-top:8px;">Connector-native ingestion: no TPT, no Flink. The Confluent JDBC Sink + Teradata JDBC driver from Maven Central, credentials via FileConfigProvider.</p>
       </a>
 
+      <a href="#demo08" class="card" style="--node-c:var(--c-warn); display:block;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span class="demo-id">08</span>
+          <span class="tag" style="border-color:transparent; padding:0;">DLQ</span>
+        </div>
+        <h3 style="font-size:17px; margin-top:14px;">Dead-Letter Queue — Error Handling</h3>
+        <p style="font-size:13.5px; margin-top:8px;">Bad records (null required field) route to a Kafka DLQ topic with full error context headers. Connector stays <code>RUNNING</code>. Valid records continue to Teradata uninterrupted.</p>
+      </a>
+
     </div>
   </div>
 </section>
@@ -659,7 +669,8 @@ footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--te
       <h2>Teradata isn't another streaming engine — it's the analytical layer underneath one.</h2>
       <p class="sub">Teradata does not compete with Apache Kafka, Apache Flink, or any message broker. It is the
       enterprise SQL, governance, and historical-context layer that sits over streaming data — and it connects
-      to a live Kafka topic through two integration paths that typically run in parallel.</p>
+      to a live Kafka topic through two integration paths that typically run in parallel. A data streaming platform
+      is the infrastructure; Teradata is what makes that infrastructure analytically valuable.</p>
     </div>
 
     <div class="card" style="padding:24px 24px 16px; overflow-x:auto;">
@@ -755,8 +766,9 @@ footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--te
     </div>
     <p style="font-size:13px; color:var(--text-faint); margin-top:6px;">
       Demos 02 and 06 run in the near-real-time band (5-second flush); Demos 04 and 05 at 30-second checkpoint
-      granularity; Demo 07 at connector-batch cadence (seconds). Demo 03 runs as a high-frequency microbatch on
-      a 5-minute Kafka Connect flush. Demo 01 is a bulk file load and sits outside the streaming ladder entirely.
+      granularity; Demos 07 and 08 at connector-batch cadence (seconds). Demo 03 runs as a high-frequency microbatch
+      on a 5-minute Kafka Connect flush. Demo 01 is a bulk file load and sits outside the streaming ladder entirely.
+      Demo 08 adds a parallel DLQ path — bad records are sidelined without affecting the main-path latency.
     </p>
 
     <div class="subhead" style="margin-top:52px;">Five ingestion paths</div>
@@ -821,39 +833,55 @@ footer.site p{ font-family: var(--font-mono); font-size: 12.5px; color: var(--te
           <li style="font-size:13px; color:var(--c-warn);"><code>TMODE=ANSI</code> required in JDBC URL — Teradata's TERA-mode defaults are incompatible.</li>
         </ul>
       </div>
+
+      <div class="card" style="--node-c:var(--c-warn);">
+        <span class="tag" style="--node-c:var(--c-warn);"><span class="sw" style="background:var(--c-warn)"></span>DLQ</span>
+        <h4 style="margin-top:12px; font-size:16px;">The production resilience layer</h4>
+        <p style="font-size:13.5px; margin-top:8px;">In production, streams always carry some invalid records. Kafka Connect's built-in dead-letter queue handles this without stopping the pipeline (Demo&nbsp;08):</p>
+        <ul class="bullets" style="margin-top:10px; gap:8px;">
+          <li style="font-size:13px; color:var(--c-ok);"><code>errors.tolerance=all</code> — any per-record failure is caught; connector stays <code>RUNNING</code>.</li>
+          <li style="font-size:13px; color:var(--c-ok);">DLQ is a normal Kafka topic — auditable, replayable after the issue is fixed.</li>
+          <li style="font-size:13px; color:var(--c-ok);">Error context headers on every DLQ record: connector, offset, exception class, full stack trace.</li>
+          <li style="font-size:13px; color:var(--c-warn);">Only per-record failures are caught — worker-level errors (cannot connect to Teradata) still fail the task.</li>
+          <li style="font-size:13px;">Contrast: TPT STREAM's <code>_ET</code> error table is the equivalent DB-side pattern for bulk loads.</li>
+        </ul>
+      </div>
     </div>
 
     <div class="subhead" style="margin-top:52px;">Production design patterns</div>
-    <p style="max-width:760px;">Three patterns account for most enterprise streaming deployments built on Teradata.
-    The mixed pattern — hot and cold paths running in parallel off the same topic — is the most common in
-    production.</p>
+    <p style="max-width:760px;">Three canonical patterns — from Teradata's enterprise reference architecture work —
+    account for most streaming deployments. The mixed pattern (hot and cold paths off the same topic) is the most
+    common in production. All three patterns require a resilience layer: Demo&nbsp;08 shows what that looks like at
+    the connector level.</p>
     <div class="tbl-wrap">
       <table>
         <tr><th>Pattern</th><th>Flow</th><th>Best for</th><th>Reference benchmark</th></tr>
         <tr>
-          <td><strong>1 · Event Processing &amp; Enrichment</strong></td>
+          <td><strong>A · Pure Stream</strong></td>
           <td>Kafka → Flink → <span style="color:var(--text);">Teradata JDBC lookup</span> → enriched stream → consumers</td>
-          <td>Fraud detection, next-best-offer, anomaly detection</td>
-          <td>Global bank: <strong style="color:var(--c-ok);">37 hrs → 12 min</strong> fraud detection</td>
+          <td>Fraud detection, next-best-offer, real-time operational scoring</td>
+          <td>HSBC: <strong style="color:var(--c-ok);">37 hrs → 12 min</strong> fraud detection (BYOM in-database scoring)</td>
         </tr>
         <tr>
-          <td><strong>2 · Real-Time Dashboard</strong></td>
-          <td>Kafka → TPT Stream → Teradata tables → BI tools (live)</td>
-          <td>Logistics tracking, NOC monitoring, financial dashboards</td>
-          <td><strong style="color:var(--c-ok);">2.5M+ queries/day</strong> concurrent with live ingest</td>
-        </tr>
-        <tr>
-          <td><strong>3 · Mixed / Mini-Batch</strong> <span style="color:var(--text-faint); font-size:11.5px;">(most common)</span></td>
-          <td>Kafka → TPT (staging) → mini-batch ETL <em>and</em> Kafka → Flink → Iceberg → OTF, in parallel</td>
+          <td><strong>B · Mixed Ingest</strong> <span style="color:var(--text-faint); font-size:11.5px;">(most common)</span></td>
+          <td>Kafka → TPT (hot) <em>and</em> Kafka → Flink → Iceberg → OTF (cold), in parallel</td>
           <td>Decoupled hot + cold paths; the majority of enterprise streaming estates</td>
           <td>DHL: <strong style="color:var(--c-ok);">500M msg/day</strong>; European retailer EPOS streaming</td>
+        </tr>
+        <tr>
+          <td><strong>C · Constrained Streaming</strong></td>
+          <td>Batch/micro-batch ingest adapting to upstream constraints → streaming semantics downstream</td>
+          <td>ERP/mainframe sources; JDBC Sink connector model; legacy enterprise environments</td>
+          <td><strong style="color:var(--c-ok);">2.5M+ queries/day</strong> concurrent with live connector ingest</td>
         </tr>
       </table>
     </div>
     <p style="font-size:13px; color:var(--text-faint); margin-top:10px;">
-      This guide's seven demos are smaller-scale instances of the same three patterns: Demo&nbsp;05 is Pattern&nbsp;1
-      (enrichment); Demos&nbsp;02 and&nbsp;07 are Pattern&nbsp;2 (real-time dashboard); Demos&nbsp;03–04 and&nbsp;06
-      build the mixed pattern — Demo&nbsp;06 via Flink + TPT, Demo&nbsp;03 via NOS, Demo&nbsp;04 via Iceberg OTF.
+      This guide's eight demos are smaller-scale instances of the same three patterns. Demo&nbsp;05 is Pattern&nbsp;A
+      (enrichment); Demos&nbsp;02 and&nbsp;06 are the hot-path layer of Pattern&nbsp;B; Demos&nbsp;03–04 build the
+      cold-path layer; Demos&nbsp;07–08 are Pattern&nbsp;C — connector-native ingestion with resilience.
+      Teradata's stated positioning: <em>"We sit alongside, interact with and augment the stream. We are not in the
+      streaming infrastructure business."</em>
     </p>
 
   </div>
@@ -2690,11 +2718,293 @@ ORDER BY 1;</code></pre></div>
 
   </div>
 </section>
+<section id="demo08">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="subhead">Demo 08 · Production resilience</div>
+      <h2><span class="demo-id" style="margin-right:12px;">08</span>Dead-Letter Queue — Parse-Error Handling</h2>
+      <p class="sub">In production, streams always carry some invalid records — null required fields, wrong types,
+      corrupt payloads. A pipeline that fails on the first bad message is not production-ready. This demo shows
+      Kafka Connect's built-in <strong>dead-letter queue (DLQ)</strong> mechanism: bad records are routed to a
+      separate Kafka topic while valid records continue flowing to Teradata without interruption.</p>
+      <div style="display:flex; gap:8px; margin-top:16px; flex-wrap:wrap;">
+        <span class="tag" style="--node-c:var(--c-connect);"><span class="sw" style="background:var(--c-connect)"></span>Ingestion: Kafka Connect JDBC Sink</span>
+        <span class="tag" style="--node-c:var(--c-warn);"><span class="sw" style="background:var(--c-warn)"></span>Feature: errors.tolerance=all · DLQ topic · error context headers</span>
+      </div>
+    </div>
+
+    <div class="card" style="padding:24px 24px 16px; overflow-x:auto; margin-top:28px;">
+      <svg class="flow-svg" viewBox="0 0 1180 200" style="width:100%; min-width:900px; height:auto;">
+        <defs>
+          <marker id="arrow-d08" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--border-strong)"></path>
+          </marker>
+          <marker id="arrowHl-d08" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--primary)"></path>
+          </marker>
+          <marker id="arrowWarn-d08" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--c-warn)"></path>
+          </marker>
+        </defs>
+        <!-- Producer -->
+        <g class="flow-node">
+          <rect x="10" y="70" width="180" height="55" style="stroke:var(--c-producer)"></rect>
+          <text x="100" y="93" text-anchor="middle" class="lbl">adsb_producer.py</text>
+          <text x="100" y="109" text-anchor="middle" class="sub">--format connect-json</text>
+          <text x="100" y="122" text-anchor="middle" class="sub" style="fill:var(--c-warn);">--inject-errors 5</text>
+        </g>
+        <path class="flow-edge" d="M190,97 L240,97" marker-end="url(#arrow-d08)"></path>
+        <!-- Kafka topic -->
+        <g class="flow-node">
+          <rect x="240" y="70" width="185" height="55" style="stroke:var(--c-kafka)"></rect>
+          <text x="332" y="93" text-anchor="middle" class="lbl">Kafka topic</text>
+          <text x="332" y="109" text-anchor="middle" class="sub">adsb-positions-dlq-demo</text>
+          <text x="332" y="122" text-anchor="middle" class="sub" style="fill:var(--c-warn);">20% bad · 80% valid</text>
+        </g>
+        <path class="flow-edge" d="M425,97 L475,97" marker-end="url(#arrow-d08)"></path>
+        <!-- Kafka Connect -->
+        <g class="flow-node">
+          <rect x="475" y="70" width="220" height="55" style="stroke:var(--c-connect)"></rect>
+          <text x="585" y="91" text-anchor="middle" class="lbl">Kafka Connect</text>
+          <text x="585" y="107" text-anchor="middle" class="sub">JDBC Sink</text>
+          <text x="585" y="120" text-anchor="middle" class="sub">errors.tolerance=all</text>
+        </g>
+        <!-- Good path → Teradata -->
+        <path class="flow-edge active" d="M695,85 L755,85" marker-end="url(#arrowHl-d08)"></path>
+        <text x="725" y="76" text-anchor="middle" class="sub" fill="var(--primary)">valid rows</text>
+        <g class="flow-node hl">
+          <rect x="755" y="65" width="220" height="55" style="stroke:var(--c-teradata)"></rect>
+          <text x="865" y="88" text-anchor="middle" class="lbl">adsb_positions_08</text>
+          <text x="865" y="104" text-anchor="middle" class="sub">Teradata · ~80 rows</text>
+          <text x="865" y="117" text-anchor="middle" class="sub">good records only</text>
+        </g>
+        <!-- Error path → DLQ -->
+        <path d="M585,125 L585,160 L755,160" stroke="var(--c-warn)" stroke-width="2" fill="none" stroke-dasharray="5 3" marker-end="url(#arrowWarn-d08)"></path>
+        <text x="665" y="152" text-anchor="middle" class="sub" style="fill:var(--c-warn);">bad rows (null lat)</text>
+        <g class="flow-node">
+          <rect x="755" y="135" width="220" height="55" style="stroke:var(--c-warn)"></rect>
+          <text x="865" y="158" text-anchor="middle" class="lbl" style="fill:var(--c-warn);">DLQ topic</text>
+          <text x="865" y="174" text-anchor="middle" class="sub">adsb-positions-dlq-demo.dlq</text>
+          <text x="865" y="187" text-anchor="middle" class="sub">~20 records + error headers</text>
+        </g>
+      </svg>
+    </div>
+
+    <div class="cols2" style="margin-top:40px; align-items:start;">
+      <div>
+        <div class="subhead">What it demonstrates</div>
+        <ul class="bullets">
+          <li>Kafka Connect's <strong>native DLQ</strong>: three JSON properties activate it —
+            <code>errors.tolerance=all</code>, <code>errors.deadletterqueue.topic.name</code>,
+            <code>errors.deadletterqueue.context.headers.enable=true</code>. Zero code changes to the connector.</li>
+          <li><strong>Error context headers</strong> on every DLQ record: connector name, task ID, source topic,
+            partition, offset, exception class, and full stack trace — the record is fully auditable without
+            consuming the original topic.</li>
+          <li><strong>Partial failure</strong> — invalid records are sidelined; the connector remains
+            <code>RUNNING</code> and valid records continue flowing to Teradata at the same throughput. The 80/20
+            split (100 messages produced: ~80 land in Teradata, ~20 in DLQ) is deterministic and reproducible.</li>
+          <li><strong>Replay path</strong> — the DLQ is a normal Kafka topic: replayable after the underlying
+            issue is corrected. Records carry enough context (source offset, error type) to trace back to the
+            originating produce call.</li>
+          <li><strong>Error injection via producer</strong>: <code>--inject-errors 5</code> sets every 5th
+            message to <code>latitude: null</code> while keeping the Connect JSON schema <code>optional: false</code>
+            — guaranteed JDBC NOT NULL violation, independent of Teradata session mode or DDL details.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="subhead">How to run</div>
+        <div class="codepanel">
+          <div class="codepanel-head"><span class="fname">terminal</span></div>
+          <div class="codepanel-body"><pre><code class="language-bash"># Bounded: 100 messages (~80 good, ~20 DLQ), then verify
+bash demos/08-dlq-pattern/run.sh
+
+# Continuous: produce until Ctrl+C
+bash demos/08-dlq-pattern/run.sh --continuous</code></pre></div>
+        </div>
+        <div class="note" style="margin-top:16px; --node-c:var(--c-warn);">
+          <strong>Flink SQL has no equivalent DLQ mechanism.</strong> An Avro deserialization failure in Flink
+          kills the job — there is no side-output or try-catch at the SQL layer. A DataStream API (Java) job
+          could use side outputs for this, but that is beyond the scope of this demo stack. TPT STREAM's
+          <code>_ET</code> error table is the equivalent pattern for bulk loads: rows that fail type casting or
+          constraint validation go there rather than aborting the job.
+        </div>
+      </div>
+    </div>
+
+    <div class="subhead" style="margin-top:44px;">How it works</div>
+    <div class="steps">
+      <div class="step" style="--node-c:var(--c-teradata)">
+        <div class="step-num">1</div>
+        <h4>Setup</h4>
+        <p><code>run.sh</code> writes <code>td-credentials.properties</code> from <code>.env</code>, creates both
+        topics (<code>adsb-positions-dlq-demo</code> and <code>adsb-positions-dlq-demo.dlq</code>), and clears
+        <code>adsb_positions_08</code>.</p>
+      </div>
+      <div class="step" style="--node-c:var(--c-connect)">
+        <div class="step-num">2</div>
+        <h4>DLQ connector registered</h4>
+        <p>Config: <code>td-jdbc-sink-dlq.json</code> — identical to Demo&nbsp;07's config except for the topic,
+        target table, and four DLQ properties added. Script waits for <code>RUNNING</code> before producing.</p>
+        <span class="mini">kafka/connect/td-jdbc-sink-dlq.json</span>
+      </div>
+      <div class="step" style="--node-c:var(--c-producer)">
+        <div class="step-num">3</div>
+        <h4>Producer publishes — with injected errors</h4>
+        <p>Every 5th message has <code>latitude: null</code> in the payload while the schema keeps
+        <code>"optional": false</code>. The JDBC Sink attempts <code>INSERT NULL</code> into a
+        <code>NOT NULL</code> column, receives a <code>SQLException</code>, and routes the record to the DLQ topic.
+        Valid messages continue to Teradata.</p>
+      </div>
+      <div class="step" style="--node-c:var(--c-warn)">
+        <div class="step-num">4</div>
+        <h4>DLQ inspection + Teradata verification</h4>
+        <p><code>kafka-console-consumer</code> with <code>--property print.headers=true</code> shows up to 3 DLQ
+        records with full error context headers. The verify query confirms the good/bad split: ~80 rows in
+        Teradata, ~20 records in the DLQ topic.</p>
+      </div>
+    </div>
+
+    <div class="subhead" style="margin-top:44px;">DLQ connector properties</div>
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>Property</th><th>Value</th><th>Effect</th></tr>
+        <tr><td><code>errors.tolerance</code></td><td><code>all</code></td><td>Swallow any per-record failure; log it and continue. Connector never transitions to <code>FAILED</code> for a bad row.</td></tr>
+        <tr><td><code>errors.deadletterqueue.topic.name</code></td><td><code>adsb-positions-dlq-demo.dlq</code></td><td>Failed records are published here verbatim. Normal Kafka topic — can be monitored, consumed, or replayed downstream.</td></tr>
+        <tr><td><code>errors.deadletterqueue.context.headers.enable</code></td><td><code>true</code></td><td>Attaches error context as Kafka headers: source offset, connector name, task ID, exception class, full stack trace.</td></tr>
+        <tr><td><code>errors.log.enable</code></td><td><code>true</code></td><td>Mirrors error to the Connect worker log — observable in real time via <code>docker compose logs kafka-connect</code>.</td></tr>
+        <tr><td><code>errors.log.include.messages</code></td><td><code>true</code></td><td>Includes the original message payload in the worker log entry — useful for debugging without touching the DLQ topic.</td></tr>
+        <tr><td><em>Everything else</em></td><td><em>(unchanged from Demo&nbsp;07)</em></td><td>Same connector class, JDBC URL, credentials, converter, whitelist — DLQ is additive, not a rewrite.</td></tr>
+      </table>
+    </div>
+
+    <div class="subhead" style="margin-top:44px;">Table, connector config &amp; queries</div>
+    <div class="codepanel" id="cp-demo08">
+      <div class="codepanel-head">
+        <div class="codepanel-tabs">
+          <button class="codepanel-tab active" onclick="showTab('cp-demo08',0)">DDL</button>
+          <button class="codepanel-tab" onclick="showTab('cp-demo08',1)">DLQ connector config</button>
+          <button class="codepanel-tab" onclick="showTab('cp-demo08',2)">queries</button>
+        </div>
+      </div>
+      <div class="codepanel-body">
+        <div class="code-view active"><pre><code class="language-sql">-- Same DDL as Demo 07, different table name
+CREATE MULTISET TABLE adsb_positions_08 (
+  icao24        CHAR(6)       NOT NULL,
+  callsign      VARCHAR(8),
+  pos_date      DATE          NOT NULL,
+  latitude      DECIMAL(9,6)  NOT NULL,   -- NOT NULL triggers JDBC exception on null
+  longitude     DECIMAL(10,6) NOT NULL,
+  altitude      INTEGER,
+  velocity      DECIMAL(7,2),
+  heading       DECIMAL(6,2),
+  vertical_rate INTEGER,
+  on_ground     BYTEINT       DEFAULT 0,
+  squawk        CHAR(4),
+  ts            TIMESTAMP(3)  NOT NULL,
+  ingest_ts     TIMESTAMP(0)  DEFAULT CURRENT_TIMESTAMP(0)
+)
+PRIMARY INDEX (icao24)
+PARTITION BY RANGE_N(pos_date BETWEEN DATE '2024-01-01' AND DATE '2030-12-31' EACH INTERVAL '1' DAY);</code></pre></div>
+        <div class="code-view"><pre><code class="language-json">{
+  "name": "demo08-td-jdbc-sink-dlq",
+  "config": {
+    "connector.class": "io.confluent.connect.jdbc.JdbcSinkConnector",
+    "tasks.max": "1",
+    "topics": "adsb-positions-dlq-demo",
+    "connection.url": "jdbc:teradata://${file:.../td-credentials.properties:td_host}/DATABASE=demo_db,TMODE=ANSI",
+    "connection.user": "${file:.../td-credentials.properties:td_user}",
+    "connection.password": "${file:.../td-credentials.properties:td_password}",
+    "insert.mode": "insert",
+    "auto.create": "false",
+    "table.name.format": "adsb_positions_08",
+    "fields.whitelist": "icao24,callsign,...,ts",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "true",
+    "consumer.override.auto.offset.reset": "earliest",
+
+    "errors.tolerance": "all",
+    "errors.deadletterqueue.topic.name": "adsb-positions-dlq-demo.dlq",
+    "errors.deadletterqueue.context.headers.enable": "true",
+    "errors.log.enable": "true",
+    "errors.log.include.messages": "true"
+  }
+}</code></pre></div>
+        <div class="code-view"><pre><code class="language-sql">-- Verify good records landed (expect ~80 of 100)
+SELECT COUNT(*) AS positions_received,
+       COUNT(DISTINCT icao24) AS aircraft_seen
+FROM demo_db.adsb_positions_08;
+
+-- Inspect DLQ records from the shell (print.headers shows error context)
+-- docker compose exec kafka kafka-console-consumer \
+--   --bootstrap-server localhost:9092 \
+--   --topic adsb-positions-dlq-demo.dlq \
+--   --from-beginning --property print.headers=true --timeout-ms 5000
+
+-- Connector status (should show RUNNING, not FAILED)
+-- curl -s http://localhost:8083/connectors/demo08-td-jdbc-sink-dlq/status | python3 -m json.tool</code></pre></div>
+      </div>
+    </div>
+
+    <div class="subhead" style="margin-top:44px;">What to expect</div>
+    <div class="terminal">
+      <div class="terminal-head">
+        <span class="dot" style="background:#FF5F57"></span><span class="dot" style="background:#FEBC2E"></span><span class="dot" style="background:#28C840"></span>
+        <span class="label">bash demos/08-dlq-pattern/run.sh</span>
+      </div>
+      <pre><span class="term-head2">======================================================
+  Demo 8: Kafka Connect JDBC Sink — DLQ Pattern
+  Topic:         adsb-positions-dlq-demo
+  DLQ topic:     adsb-positions-dlq-demo.dlq
+  Connector:     demo08-td-jdbc-sink-dlq
+  Error inject:  every 5th message (latitude=null)
+======================================================</span>
+
+<span class="term-hl">── 3/5  Registering JDBC Sink connector with DLQ config</span>
+      errors.tolerance=all → bad rows go to .dlq, connector stays RUNNING
+      Waiting for connector+task to start.......... <span class="term-ok">RUNNING</span>
+
+<span class="term-hl">── 4/5  Publishing ADS-B positions (with injected errors)</span>
+      Publishing 100 messages (10 aircraft × 10 cycles, 1s interval)...
+      Every 5th message has latitude=null → routed to DLQ.
+      Expected: ~80 good rows in Teradata, ~20 records in DLQ.
+
+      [3s] Rows in adsb_positions_08: 52 / ~80
+      [6s] Rows in adsb_positions_08: 80 / ~80
+
+<span class="term-hl">── 5/5  Inspecting DLQ and verifying Teradata</span>
+
+── DLQ sample (up to 3 records with error headers) ──
+      connects.errors.topic: adsb-positions-dlq-demo
+      connects.errors.offset: 4
+      connects.errors.exception.class.name: org.apache.kafka.connect.errors.DataException
+      connects.errors.exception.message: Error converting value: null ...
+
+  positions_received   aircraft_seen
+  ------------------   -------------
+                  80              10
+
+======================================================
+  Results: 100 produced → 80 Teradata · 20 DLQ
+  Connector status: RUNNING (errors.tolerance=all kept it alive)
+======================================================</pre>
+    </div>
+
+    <div class="note" style="margin-top:24px; --node-c:var(--c-warn);">
+      <strong>Why this matters in production.</strong> The Confluent Data Streaming Report 2025 (4,175 IT leaders)
+      found 86% prioritise streaming investment — but production streaming pipelines fail silently when bad records
+      stop entire connectors. A DLQ separates the <em>resilience</em> question ("does the pipeline keep running?")
+      from the <em>data quality</em> question ("how do we handle the bad records?"). Both need answers before any
+      streaming pipeline goes live, and they are answered independently: <code>errors.tolerance=all</code> + DLQ
+      topic handles the first; a downstream consumer of the DLQ topic handles the second.
+    </div>
+
+  </div>
+</section>
 <section id="compare">
   <div class="wrap">
     <div class="sec-head">
       <div class="subhead">Compare &amp; choose</div>
-      <h2>Same destination, seven different roads in.</h2>
+      <h2>Same destination, eight different roads in.</h2>
       <p class="sub">Every demo lands data in Teradata. What differs is the latency tier, the operator
       doing the work, and how much of the journey happens before Teradata ever sees a row.</p>
     </div>
@@ -2753,11 +3063,18 @@ ORDER BY 1;</code></pre></div>
           <td>Connector-native, no TPT, Confluent Community License, FileConfigProvider secrets</td>
           <td>Moderate throughput; teams preferring a managed connector over TPT job scripts</td>
         </tr>
+        <tr>
+          <td><span class="tag" style="border-color:transparent;"><span class="sw" style="background:var(--c-warn)"></span>08</span></td>
+          <td>Kafka Connect JDBC Sink + DLQ</td>
+          <td>Near real-time + parallel DLQ path</td>
+          <td><code>errors.tolerance=all</code> · DLQ topic · error context headers · connector stays <code>RUNNING</code></td>
+          <td>Any production JDBC Sink deployment; pattern applies to all Kafka Connect connectors</td>
+        </tr>
       </table>
     </div>
 
-    <div class="subhead" style="margin-top:56px;">BFS vs NOS vs OTF — the three storage tiers behind Demos 02–07</div>
-    <p style="max-width:760px;">Demos&nbsp;02, 06, and 07 write straight into Teradata's own block storage (BFS).
+    <div class="subhead" style="margin-top:56px;">BFS vs NOS vs OTF — the three storage tiers behind Demos 02–08</div>
+    <p style="max-width:760px;">Demos&nbsp;02, 06, 07, and 08 write straight into Teradata's own block storage (BFS).
     Demo&nbsp;03 reads files NOS doesn't own or manage. Demos&nbsp;04–05 read a governed Iceberg table through OTF.
     These aren't competing options — they're complementary tiers, and most real architectures use all three.</p>
 
@@ -2816,6 +3133,7 @@ ORDER BY 1;</code></pre></div>
         <tr><td><code>docs/demo05-flink-td-enrich.md</code></td><td>JDBC Lookup Join, custom Teradata Flink dialect, cache TTL</td></tr>
         <tr><td><code>docs/demo06-flink-avro-tpt.md</code></td><td>Confluent wire-format Avro, avro-confluent Flink format, Schema Registry setup, BIGINT ts workaround, raw sink format</td></tr>
         <tr><td><code>docs/demo07-kafka-connect-td.md</code></td><td>JDBC Sink connector config, FileConfigProvider secrets, TMODE=ANSI, GenericDatabaseDialect limitations</td></tr>
+        <tr><td><code>docs/demo08-dlq-pattern.md</code></td><td>DLQ properties reference, error context headers table, replay guidance, Flink DLQ limitation, TPT _ET table analogue</td></tr>
         <tr><td>Teradata DATASET Data Type — B035-1198</td><td>Avro/CSV complex data type reference</td></tr>
         <tr><td>Teradata Parallel Transporter Reference Guide — B035-2436</td><td>TPT operators, Access Modules, tbuild flags</td></tr>
         <tr><td>TPT Kafka Access Module — B035-2447</td><td>Kafka Access Module configuration reference</td></tr>
@@ -2827,7 +3145,7 @@ ORDER BY 1;</code></pre></div>
 </section>
 
 <footer class="site">
-  <p>teradata-streaming-demo &nbsp;·&nbsp; field guide, first pass &nbsp;·&nbsp; generated from the repo's own docs, scripts, and run output</p>
+  <p>teradata-streaming-demo &nbsp;·&nbsp; field guide &nbsp;·&nbsp; 8 demos · generated from the repo's own docs, scripts, and run output</p>
 </footer>
 
   </div>
