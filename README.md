@@ -45,7 +45,7 @@ Full setup instructions: [docs/setup.md](docs/setup.md)
 
 ## Teradata Express setup
 
-If you are using **Teradata Express (TDExpress v20)** as the Teradata instance, additional one-time configuration is required to enable Open Table Format (OTF) support for Demos 3–5.
+If you are using [**Teradata Express (TDExpress v20)**](https://downloads.teradata.com/download/database/teradata-express/vmware) as the Teradata instance, additional one-time configuration is required to enable Open Table Format (OTF) support for Demos 3–5.
 
 See [docs/setup-td-express-20.md](docs/setup-td-express-20.md) for the full configuration guide, including:
 
