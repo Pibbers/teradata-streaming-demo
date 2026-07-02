@@ -14,7 +14,7 @@
 #     v1 rows return NULL for the three v2-only fields
 #
 # Prerequisites:
-#   docker compose up -d        (kafka, minio, tpt at minimum)
+#   docker compose up -d tpt       (this demo only needs the tpt container)
 #   bash tpt/scripts/run_setup.sh  (one-time Teradata table setup)
 #   pip install fastavro        (for generate_product_avro.py)
 #

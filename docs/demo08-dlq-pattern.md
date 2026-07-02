@@ -20,7 +20,7 @@ adsb_producer.py                 Kafka                        Kafka Connect     
                                                                └─ [bad rows] → adsb-positions-dlq-demo.dlq
 ```
 
-Every 5th message has `latitude: null` in the payload. The JDBC Sink attempts to INSERT null into Teradata's `NOT NULL` column, gets a JDBC exception, and — because `errors.tolerance=all` — routes the record to the DLQ topic and continues processing.
+Every 5th message has `latitude: null` in the payload, while the Connect JSON schema still declares that field `"optional": false`. Kafka Connect's `JsonConverter` rejects the null during JSON→Connect-record conversion — a `DataException` at the `VALUE_CONVERTER` stage, before the record ever reaches the JDBC Sink task or Teradata — and because `errors.tolerance=all`, routes the record to the DLQ topic and continues processing. (Teradata's own `NOT NULL` constraint on `adsb_positions_08.latitude` is never actually exercised by this demo — the failure happens one stage earlier, at schema conversion.)
 
 ## What activates the DLQ
 
@@ -51,20 +51,20 @@ Each record in the DLQ topic carries headers that identify exactly what went wro
 
 | Header | Example value |
 |--------|---------------|
-| `connects.errors.topic` | `adsb-positions-dlq-demo` |
-| `connects.errors.partition` | `0` |
-| `connects.errors.offset` | `4` |
-| `connects.errors.connector.name` | `demo08-td-jdbc-sink-dlq` |
-| `connects.errors.task.id` | `0` |
-| `connects.errors.stage` | `TASK_PUT` |
-| `connects.errors.exception.class.name` | `org.apache.kafka.connect.errors.DataException` |
-| `connects.errors.exception.message` | Full JDBC stack trace |
+| `__connect.errors.topic` | `adsb-positions-dlq-demo` |
+| `__connect.errors.partition` | `0` |
+| `__connect.errors.offset` | `4` |
+| `__connect.errors.connector.name` | `demo08-td-jdbc-sink-dlq` |
+| `__connect.errors.task.id` | `0` |
+| `__connect.errors.stage` | `VALUE_CONVERTER` |
+| `__connect.errors.exception.class.name` | `org.apache.kafka.connect.errors.DataException` |
+| `__connect.errors.exception.message` | Converter error: null value for a required (non-optional) field |
 
 The original message payload is preserved in the DLQ record value — enabling replay after the issue is fixed.
 
 ## Error injection
 
-`adsb_producer.py` accepts `--inject-errors N`: every N-th message in `connect-json` format has `latitude: null` in the payload while the Connect JSON schema keeps `"optional": false` for that field. This forces a JDBC NOT NULL constraint violation on every injected record, regardless of the Teradata DDL.
+`adsb_producer.py` accepts `--inject-errors N`: it injects on message index `0, N, 2N, ...` (0-based, so with `N=5` the 1st, 6th, 11th, ... messages sent are bad, not literally "every 5th" by 1-based count) — each has `latitude: null` in the payload while the Connect JSON schema keeps `"optional": false` for that field. This forces a converter-level `DataException` on every injected record, regardless of the Teradata DDL.
 
 ```python
 # In encode_connect_json():
@@ -126,10 +126,10 @@ The script:
 
 ── DLQ sample (up to 3 records with error headers) ────────
   CreateTime:1750941...
-      connects.errors.topic: adsb-positions-dlq-demo
-      connects.errors.offset: 4
-      connects.errors.exception.class.name: org.apache.kafka.connect.errors.DataException
-      connects.errors.exception.message: Error converting value: null ...
+      __connect.errors.topic: adsb-positions-dlq-demo
+      __connect.errors.offset: 4
+      __connect.errors.exception.class.name: org.apache.kafka.connect.errors.DataException
+      __connect.errors.exception.message: Error converting value: null ...
 
 ── Teradata row count ──────────────────────────────────────
 

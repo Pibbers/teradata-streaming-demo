@@ -17,14 +17,15 @@
                            ┌─────────────────────────────────────────┐
                            │          Docker Compose (demo-net)       │
                            │                                          │
-  Python producers ──────► │  Kafka (KRaft)                           │
+  Python producers ──────► │  Kafka (KRaft) + Schema Registry         │
                            │    │                                     │
                            │    ├─► TPT container ──────────────────► │──► Teradata (external)
                            │    │    (BTEQ / tbuild)                  │
                            │    │                                     │
                            │    ├─► Kafka Connect (S3 Sink) ────────► │──► MinIO
-                           │    │                                     │      │
-                           │    └─► Flink (JobManager/TaskManager)    │      └─► NOS / OTF ──► Teradata
+                           │    │    JDBC Sink → Teradata             │      │
+                           │    │                                     │      └─► NOS / OTF ──► Teradata
+                           │    └─► Flink (JobManager/TaskManager)    │
                            │                                          │
                            │  MinIO (S3-compatible object store)      │
                            │  Hive Metastore + MySQL (Iceberg catalog)│
@@ -109,9 +110,13 @@ docker build -t flink-demo:latest flink/
 # Foundation only (needed for Demo 1)
 docker compose up -d tpt
 
-# Full stack (needed for Demos 2–5)
+# Full stack (needed for Demos 2–8)
 docker compose up -d
 ```
+
+> Demos 6 and 7 add services (Schema Registry, Kafka Connect) whose images must be rebuilt
+> after certain Dockerfile changes — see [docs/demo06-flink-avro-tpt.md](demo06-flink-avro-tpt.md)
+> and [docs/demo07-kafka-connect-td.md](demo07-kafka-connect-td.md) for demo-specific rebuild steps.
 
 Wait for all services to become healthy:
 

@@ -66,7 +66,7 @@ bash demos/04-kafka-flink-iceberg/run.sh --bounded
 |---|---|
 | DATALAKE, not FOREIGN TABLE | Iceberg tables are queried via `CREATE DATALAKE` with `CATALOG_TYPE('hive')` |
 | `HOST_IP` in CATALOG_LOCATION and STORAGE_ENDPOINT | Teradata is external to Docker; use `HOST_IP` from `.env`, not container hostnames |
-| Auth objects must be in the session database | `INVOKER TRUSTED` resolves from the active session database |
+| Auth objects must live in `TD_SERVER_DB` | DATALAKE objects are stored in `TD_SERVER_DB`, so `EXTERNAL SECURITY DEFINER TRUSTED` (not `INVOKER TRUSTED`) must be used, and the auth objects must be created in `TD_SERVER_DB` before the `CREATE DATALAKE` — `INVOKER TRUSTED` always resolves against the connecting user's home DB (DBC for user dbc) and fails with error 6938 |
 | `S3_PATH_STYLE_ACCESS('true')` required for MinIO | MinIO uses path-style S3 URLs |
 | `S3_SSL_ENABLED('false')` required | MinIO in this stack runs HTTP |
 | Namespace created by Flink, not Teradata | `CREATE DATABASE via DATALAKE` from Teradata → error 7825; Flink's `CREATE DATABASE IF NOT EXISTS` handles this |
@@ -78,8 +78,8 @@ bash demos/04-kafka-flink-iceberg/run.sh --bounded
 DATABASE demo_db;
 
 CREATE DATALAKE demo_iceberg
-  EXTERNAL SECURITY INVOKER TRUSTED CATALOG hms_catalog_auth,
-  EXTERNAL SECURITY INVOKER TRUSTED STORAGE minio_storage_auth
+  EXTERNAL SECURITY DEFINER TRUSTED CATALOG hms_catalog_auth,
+  EXTERNAL SECURITY DEFINER TRUSTED STORAGE minio_storage_auth
 USING
   CATALOG_TYPE('hive')
   CATALOG_LOCATION('thrift://<HOST_IP>:9083')
@@ -88,8 +88,13 @@ USING
   S3_PATH_STYLE_ACCESS('true')
   STORAGE_REGION('us-east-1')
   S3_SSL_ENABLED('false')
+  S3_MAX_TASK('1000')
+  S3_MAX_THREADS('1000')
+  S3_MAX_CONNECTIONS('5000')
 TABLE FORMAT iceberg;
 ```
+
+`hms_catalog_auth` and `minio_storage_auth` must be created as `DEFINER TRUSTED` in `TD_SERVER_DB` (the DATALAKE's own database) before this statement — see [tpt/scripts/demo04/datalake_create.bteq](../tpt/scripts/demo04/datalake_create.bteq).
 
 ## Sample queries
 
@@ -106,7 +111,7 @@ ORDER BY ts DESC
 SAMPLE 20;
 
 -- Snapshot history (one row per Flink checkpoint that committed data)
-SELECT * FROM TD_SNAPSHOTS('demo_iceberg.demo.adsb_positions');
+SELECT * FROM TD_SNAPSHOTS(ON demo_iceberg.demo.adsb_positions) AS snap;
 
 -- Time travel
 SELECT COUNT(*) AS rows_at_snapshot

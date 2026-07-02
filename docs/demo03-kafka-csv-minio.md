@@ -30,7 +30,6 @@ bash demos/03-kafka-csv-minio/run.sh --fresh
 | [kafka/connect/s3-sink.json](../kafka/connect/s3-sink.json) | S3 Sink: ByteArrayFormat, flush.size=1, TimeBasedPartitioner → `YYYY-MM-DD/HH/` |
 | [tpt/scripts/demo03/nos_create.bteq](../tpt/scripts/demo03/nos_create.bteq) | NOSREAD_KEYS + CREATE FOREIGN TABLE with PATHPATTERN |
 | [tpt/scripts/demo03/nos_load.bteq](../tpt/scripts/demo03/nos_load.bteq) | Incremental INSERT (current-hour partition only) + summary |
-| [tpt/scripts/demo03/nos_prepare.bteq](../tpt/scripts/demo03/nos_prepare.bteq) | Pre-run: drop FOREIGN TABLE only (weather_obs untouched) |
 | [tpt/scripts/demo03/nos_fresh.bteq](../tpt/scripts/demo03/nos_fresh.bteq) | Full reset: drop FOREIGN TABLE + DELETE FROM weather_obs ALL |
 | [demos/03-kafka-csv-minio/run.sh](../demos/03-kafka-csv-minio/run.sh) | Orchestration |
 
@@ -52,7 +51,8 @@ bash demos/03-kafka-csv-minio/run.sh --fresh
 
 4. Incremental INSERT into weather_obs
    └─ Header rows rejected by type-cast failure (CAST('station_id' AS TIMESTAMP) fails)
-   └─ Prior hours in weather_obs are untouched — data accumulates across runs
+   └─ Current-hour rows are deleted then re-inserted first (idempotent rerun);
+      prior hours in weather_obs are untouched — data accumulates across hours
 ```
 
 ## Key NOS design rules
@@ -74,15 +74,15 @@ CREATE MULTISET FOREIGN TABLE weather_nos_ft ,FALLBACK ,
   EXTERNAL SECURITY DEFINER TRUSTED minio_nos_auth
 (
   Location          VARCHAR(2048) CHARACTER SET UNICODE CASESPECIFIC,
-  station_id        VARCHAR(4),
-  observation_ts    VARCHAR(30),
-  temperature_c     VARCHAR(10),
-  wind_speed_kts    VARCHAR(5),
-  wind_direction    VARCHAR(5),
-  visibility_m      VARCHAR(7),
-  precipitation_mm  VARCHAR(7),
-  pressure_hpa      VARCHAR(8),
-  conditions        VARCHAR(10)
+  station_id        VARCHAR(4)    CHARACTER SET LATIN,
+  observation_ts    VARCHAR(30)   CHARACTER SET LATIN,
+  temperature_c     VARCHAR(10)   CHARACTER SET LATIN,
+  wind_speed_kts    VARCHAR(5)    CHARACTER SET LATIN,
+  wind_direction    VARCHAR(5)    CHARACTER SET LATIN,
+  visibility_m      VARCHAR(7)    CHARACTER SET LATIN,
+  precipitation_mm  VARCHAR(7)    CHARACTER SET LATIN,
+  pressure_hpa      VARCHAR(8)    CHARACTER SET LATIN,
+  conditions        VARCHAR(10)   CHARACTER SET LATIN
 )
 USING (
   LOCATION    ('/S3/<host>:9000/demo-csv/raw/weather-csv/')

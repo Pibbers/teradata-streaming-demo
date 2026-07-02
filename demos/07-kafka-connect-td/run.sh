@@ -12,7 +12,7 @@
 #     no Teradata Connect plugin licence required)
 #
 # Architecture:
-#   adsb_producer.py (--format json)
+#   adsb_producer.py (--format connect-json)
 #       → Kafka (adsb-positions-json)
 #       → Kafka Connect JDBC Sink (demo07-td-jdbc-sink)
 #       → Teradata adsb_positions_07

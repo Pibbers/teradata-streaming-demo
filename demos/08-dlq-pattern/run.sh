@@ -172,15 +172,15 @@ inspect_dlq() {
 import sys
 for line in sys.stdin:
     line = line.rstrip()
-    if line.startswith('connects.errors'):
+    if line.startswith('__connect.errors'):
         # Format header key=value pairs one per line for readability
         for kv in line.split(','):
             k, _, v = kv.partition(':')
             k = k.strip(); v = v.strip()
-            if k in ('connects.errors.exception.class.name',
-                     'connects.errors.exception.message',
-                     'connects.errors.topic',
-                     'connects.errors.offset'):
+            if k in ('__connect.errors.exception.class.name',
+                     '__connect.errors.exception.message',
+                     '__connect.errors.topic',
+                     '__connect.errors.offset'):
                 print(f'      {k}: {v[:120]}')
     elif line.startswith('CreateTime') or (line.startswith('{') and '\"payload\"' in line):
         print(f'  {line[:120]}')

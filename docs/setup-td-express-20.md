@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide describes how to configure **Teradata Express (TDExpress v20)** to support **Open Table Formats (OTF)**, including:
+This guide describes how to configure [**Teradata Express (TDExpress v20)**](https://downloads.teradata.com/download/database/teradata-express/vmware) to support **Open Table Formats (OTF)**, including:
 
 * Apache Iceberg (read/write)
 * Delta Lake (read/write)
@@ -19,22 +19,22 @@ This guide describes how to configure **Teradata Express (TDExpress v20)** to su
 
 ## Configuration Reference
 
-All DBS Control flags are set via `dbscontrol` / `cnsrun`. The sections below explain every flag, why it is needed, and what happens if it is left at its default value.
+All DBS Control flags are set via `dbscontrol`. The sections below explain every flag, why it is needed, and what happens if it is left at its default value.
 
 ### OTF Feature Flags
 
 | Flag | Category | Name | Value | Default |
 |------|----------|------|-------|---------|
 | 732 | Internal | JavaOTFFlags | 0 | — |
-| 733 | Internal | NativeOTFFlags | 0 | — |
+| 733 | Internal | NativeOTFFlags | 1 | — |
 | 282 | NOS | DisableMOTF | FALSE | TRUE |
 | 245 | Internal | ColumnarPurchased | TRUE | FALSE |
 
 **Flag 732 — JavaOTFFlags = 0**
 Enables the Java-based Open Table Format engine. Setting this to `0` (all sub-bits active) turns on both Iceberg read/write and Delta Lake read/write. The flag is a bitmask: bit 0 = disable Iceberg reads, bit 1 = disable Iceberg writes, bit 2 = disable Delta reads, bit 3 = disable Delta writes (value 15 = everything off). Without this flag, queries against `DATALAKE` objects — the OTF access mechanism — will fail at the engine level. Note: Iceberg tables are accessed via `CREATE DATALAKE` + 3-level dot notation (`my_datalake.my_db.my_table`), not via `CREATE FOREIGN TABLE`.
 
-**Flag 733 — NativeOTFFlags = 0**
-Enables the native (C++) OTF reader used for Iceberg scan operations. Setting to `0` activates Iceberg read support in the native execution path. This flag works alongside 732; disabling it forces all reads through the slower Java path.
+**Flag 733 — NativeOTFFlags = 1**
+Enables the native (C++) OTF reader used for Iceberg scan operations. Setting to `0` activates Iceberg read support in the native execution path. This flag works alongside 732; disabling it forces all reads through the slower Java path.  On TDExpress v20.00.28.x, the native OTF reader is not fully supported; it is recommended to leave this at `1` (disabled) for now. Future releases will improve native OTF support.
 
 **Flag 282 — DisableMOTF = FALSE**
 Controls Managed Open Table Format — the layer that handles OTF metadata and write coordination. `FALSE` means "do NOT disable MOTF", i.e., MOTF is active. Without this, Iceberg write operations (INSERT, UPDATE, DELETE on DATALAKE tables) are rejected. Note: MERGE/UPSERT are not supported on OTF tables regardless of this flag.
@@ -186,13 +186,11 @@ cd /opt/teradata/tdotf/lib/scripts
 ### Step 2 — Apply All DBS Control Flags
 
 ```bash
-/usr/pde/bin/cnsrun -utility dbscontrol -commands "
-modify s=TRUE
-y
+dbscontrol
 
 # OTF feature flags
 modify internal 732=0
-modify internal 733=0
+modify internal 733=1
 modify nos 282=FALSE
 modify internal 245=TRUE
 
@@ -233,13 +231,12 @@ modify performance 58=1
 
 write
 quit
-"
 ```
 
 ### Step 3 — Restart Teradata
 
 ```bash
-tpareset -f
+tpareset -f now
 ```
 
 ### Step 4 — Configure DNS (if required)
@@ -288,7 +285,7 @@ SELECT TOP 1 * FROM (
 
 ### Test OTF / Iceberg connectivity (via DATALAKE)
 
-Iceberg tables are **not** accessed via `CREATE FOREIGN TABLE` or `STOREDAS`. They are accessed through a `DATALAKE` object using 3-level dot notation. First create the DATALAKE (see your catalog setup), then validate:
+Iceberg tables are accessed through a `DATALAKE` object using 3-level dot notation. First create the DATALAKE (see your catalog setup), then validate:
 
 ```sql
 -- Inspect the registered DATALAKE
@@ -306,15 +303,60 @@ SELECT TOP 5 * FROM my_iceberg_lake.my_db.my_table;
 
 ---
 
+## Diagnostics
+
+These checks isolate the most common failure modes before and after applying the setup script. Run them as `dbc` in BTEQ or SQL Assistant.
+
+### 1 — Verify OTF functions are installed in TD_OTFDB
+
+```sql
+SELECT FunctionName, DatabaseName
+FROM   DBC.FunctionsV
+WHERE  DatabaseName = 'TD_OTFDB'
+ORDER BY FunctionName;
+```
+
+Expected: **9 rows** — TD_OTF_BeginCommit, TD_OTF_CommitStagingData, TD_OTF_GetDataFiles, TD_OTF_GetDeleteFiles, TD_OTF_GetManifest, TD_OTF_GetMetadata, TD_OTF_GetPartitions, TD_OTF_GetStagingInfo, TD_OTF_RollbackStaging.
+
+If fewer than 9 rows, or zero rows, `install.sh` did not complete successfully. Re-run it and check `/opt/teradata/tdotf/lib/scripts/install.log` for errors (look for `TD_OTF_USER logon failed`).
+
+> **Note**: HELP TABLE, HELP DATALAKE, and TD_SNAPSHOTS all operate on catalog metadata and succeed even if the OTF functions are absent or partially installed. A `SELECT` that reads actual Parquet data always goes through the Java OTF engine (`TD_OTF_GetDataFiles` → `TD_OTF_GetManifest`). Error 6301 during SELECT while metadata queries succeed is the canonical symptom of missing or disabled OTF functions.
+
+### 2 — Restart the Java OTF server (if SELECT still fails after flag + function checks)
+
+The JVM process may be in a bad state after dbscontrol changes or a partial restart. Cycle it without a full `tpareset`:
+
+```sql
+DECLARE a VARCHAR(200);
+CALL SQLJ.ServerControl('JAVAOTF', 'disable',  a);
+CALL SQLJ.ServerControl('JAVAOTF', 'shutdown', a);
+CALL SQLJ.ServerControl('JAVAOTF', 'status',   a);  -- wait until result shows INACTIVE
+CALL SQLJ.ServerControl('JAVAOTF', 'enable',   a);
+```
+
+The JVM will restart automatically on the next OTF query. Run a simple `SELECT COUNT(*) FROM my_lake.my_db.my_table;` to trigger the restart and confirm the error clears.
+
+### 3 — Check install.sh log for silent failures
+
+```bash
+tail -50 /opt/teradata/tdotf/lib/scripts/install.log
+```
+
+Look for: `TD_OTF_USER logon failed` (credentials wrong), `object already exists` (ok — re-run is safe), or Java exception stack traces (indicate a real installation failure).
+
+---
+
 ## Common Issues
 
 | Symptom | Root Cause | Fix |
 |---------|-----------|-----|
+| Error 6301 on `SELECT FROM datalake.db.tbl` while HELP/TD_SNAPSHOTS work | OTF Java engine disabled or functions not installed | Verify 9 functions in TD_OTFDB (Diagnostic 1); cycle the JVM (Diagnostic 2); check install.log (Diagnostic 3) |
 | Cannot create partitioned NOS/Iceberg table | Columnar disabled | Enable flag 245 |
 | S3 access fails with TLS error | HTTPS not disabled | Set flag 101 = TRUE |
 | MinIO returns 403/404 | Path-style not enabled | Set flag 134 = TRUE |
 | Iceberg INSERT/UPDATE/DELETE rejected | MOTF disabled | Set flag 282 = FALSE |
-| DATALAKE queries fail at engine level | JavaOTFFlags / NativeOTFFlags not set | Set flags 732 and 733 to 0 |
-| `[Error 5589] TD_ICEBERG_READ does not exist` | OTF install incomplete | Re-run `install.sh`; check `/opt/teradata/tdotf/lib/scripts/install.log` |
-| Error 7583 — JVM unresponsive | OTF JVM hung | `CALL SQLJ.ServerControl('JAVAOTF', 'shutdown', a);` — JVM restarts on next query |
+| DATALAKE queries fail at engine level | JavaOTFFlags / NativeOTFFlags not set | Set flags 732 = 0 and 733 = 1 (see Step 2) |
+| `[Error 5589] TD_ICEBERG_READ does not exist` | OTF install incomplete | Re-run `install.sh`; check install.log |
+| Error 7583 — JVM unresponsive | OTF JVM hung | Use SQLJ.ServerControl cycle (Diagnostic 3) |
+| `install.sh` fails with TD_OTF_USER logon error | B/G upgrade or re-run with stale credentials | Check install.log; ensure `dbc` password is correct and TD is reachable from node |
 | Poor NOS/OTF query performance | Optimizer flags missing | Apply full optimizer block |

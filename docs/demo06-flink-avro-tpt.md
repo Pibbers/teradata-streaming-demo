@@ -14,11 +14,17 @@
 ## How to run
 
 ```bash
-# Rebuild the Flink image (required once — adds flink-sql-avro-confluent-registry JAR)
+# Rebuild the Flink image (required once — adds flink-sql-avro-confluent-registry JAR).
+# `docker compose up -d` alone will NOT pick this up if flink-demo:latest was already
+# built for an earlier demo — Compose only builds an image that doesn't exist yet.
 docker compose build flink-jobmanager flink-taskmanager
-
-# Start the full stack
 docker compose up -d
+
+# One-time Teradata setup, if not already done
+bash tpt/scripts/run_setup.sh
+
+# Python deps, if not already installed
+pip install confluent-kafka fastavro
 
 # Continuous streaming (default); press Ctrl+C to stop
 bash demos/06-flink-avro-tpt/run.sh

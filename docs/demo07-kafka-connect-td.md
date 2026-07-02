@@ -15,8 +15,8 @@ This completes the "three ways to get data into Teradata" story:
 ## Architecture
 
 ```
-adsb_producer.py          Kafka                  Kafka Connect           Teradata
-  (--format json)    →  adsb-positions-json  →  JDBC Sink connector  →  adsb_positions_07
+adsb_producer.py            Kafka                  Kafka Connect           Teradata
+ (--format connect-json) →  adsb-positions-json  →  JDBC Sink connector  →  adsb_positions_07
 ```
 
 Key points:
@@ -28,19 +28,6 @@ Key points:
   bind-mounted properties file via Kafka Connect's built-in **FileConfigProvider**.
 - `TMODE=ANSI` in the JDBC URL is required: Teradata defaults to TERA mode, which uses
   session-level transaction semantics incompatible with JDBC Sink's per-statement error handling.
-
-## Connector design decisions
-
-| Setting | Value | Reason |
-|---------|-------|--------|
-| `connector.class` | `io.confluent.connect.jdbc.JdbcSinkConnector` | Confluent Community Licence — free, no registration |
-| `insert.mode` | `insert` | `upsert` requires a custom Teradata dialect (not available in `kafka-connect-jdbc`) |
-| `auto.create` | `false` | Table DDL uses PPI (`PARTITION BY RANGE_N`) which `auto.create` cannot replicate |
-| `auto.evolve` | `false` | Schema evolution is handled in code, not at the connector layer |
-| `value.converter` | `JsonConverter` with `schemas.enable=true` | Producer sends `{"schema":{...},"payload":{...}}` envelope; connector scope only — Demo 03 S3 Sink is unaffected |
-| `fields.whitelist` | All columns except `ingest_ts` | `ingest_ts` has `DEFAULT CURRENT_TIMESTAMP(0)` server-side; it must be absent from the INSERT |
-| `TMODE=ANSI` | In JDBC URL | Required for per-statement error semantics |
-| `consumer.override.auto.offset.reset` | `earliest` | Ensures replay from offset 0 if the connector starts after messages are published |
 
 ### Teradata JDBC driver
 
@@ -92,6 +79,19 @@ The `kafka-connect` image must be rebuilt after any Dockerfile change:
 docker build -t td-demo-kafka-connect:latest kafka-connect/
 ```
 
+## Connector design decisions
+
+| Setting | Value | Reason |
+|---------|-------|--------|
+| `connector.class` | `io.confluent.connect.jdbc.JdbcSinkConnector` | Confluent Community Licence — free, no registration |
+| `insert.mode` | `insert` | `upsert` requires a custom Teradata dialect (not available in `kafka-connect-jdbc`) |
+| `auto.create` | `false` | Table DDL uses PPI (`PARTITION BY RANGE_N`) which `auto.create` cannot replicate |
+| `auto.evolve` | `false` | Schema evolution is handled in code, not at the connector layer |
+| `value.converter` | `JsonConverter` with `schemas.enable=true` | Producer sends `{"schema":{...},"payload":{...}}` envelope; connector scope only — Demo 03 S3 Sink is unaffected |
+| `fields.whitelist` | All columns except `ingest_ts` | `ingest_ts` has `DEFAULT CURRENT_TIMESTAMP(0)` server-side; it must be absent from the INSERT |
+| `TMODE=ANSI` | In JDBC URL | Required for per-statement error semantics |
+| `consumer.override.auto.offset.reset` | `earliest` | Ensures replay from offset 0 if the connector starts after messages are published |
+
 ## Running the demo
 
 ```bash
@@ -109,7 +109,7 @@ The script:
 4. Creates `adsb_positions_07` if absent, then clears it (DELETE ALL)
 5. Registers the connector via the Connect REST API
 6. Waits for connector + task to reach `RUNNING`
-7. Starts `adsb_producer.py --format json`
+7. Starts `adsb_producer.py --format connect-json`
 8. Polls Teradata until all expected rows arrive (bounded) or waits for Ctrl+C (continuous)
 9. Prints final row count and per-aircraft breakdown
 

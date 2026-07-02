@@ -35,9 +35,9 @@ python -c "import fastavro, confluent_kafka, boto3; print('✓ All dependencies 
 ```
 
 **Dependencies:**
-- `fastavro` — Avro data serialization (Demos 1, 2, 4, 6)
-- `confluent-kafka` — Kafka producer client (Demos 2, 4, 5, 6, 7, 8)
-- `boto3` / `botocore` — MinIO S3 client (Demo 3)
+- `fastavro` — Avro data serialization; imported unconditionally by `generate_product_avro.py` and `adsb_producer.py`, so required by every demo except Demo 3 (Demos 1, 2, 4, 5, 6, 7, 8), even for demos that don't use Avro-format output
+- `confluent-kafka` — Kafka producer client; used by `adsb_producer.py` and `weather_kafka.py`, so required by every demo except Demo 1 (Demos 2, 3, 4, 5, 6, 7, 8)
+- `boto3` / `botocore` — MinIO S3 client, used directly in `demos/03-kafka-csv-minio/run.sh` (Demo 3)
 
 All demo scripts (`demos/<n>-*/run.sh`) automatically activate the venv if available, so you don't need to manually source it for each run. If you prefer to skip the venv, ensure dependencies are installed globally with `pip install -r requirements.txt`.
 
@@ -90,6 +90,8 @@ See [docs/setup-td-express-20.md](docs/setup-td-express-20.md) for the full conf
 ```
 demos/          # One subdirectory per demo — each contains run.sh
 docs/           # Per-demo documentation + infrastructure setup guides
+docker/
+  hive-metastore/  # Dockerfile + config for the Hive Metastore service (Iceberg catalog, Demos 4-5)
 flink/
   Dockerfile    # Flink 1.20 + Iceberg + Hive + Teradata JDBC dialect
   dialect/      # Custom Teradata JdbcFactory/Dialect Java sources (built in Docker)
@@ -101,6 +103,8 @@ kafka/
   connect/      # Kafka Connect connector configs and credentials (td-credentials.properties gitignored)
   producers/    # Python producers (ADS-B, weather, Avro data generator)
   schemas/      # Avro schemas
+kafka-connect/
+  Dockerfile    # Kafka Connect image with S3 Sink, JDBC Sink connectors + Teradata JDBC driver
 tpt/
   scripts/
     infra/      # One-time setup BTEQ (setup_demo_tables.bteq)
