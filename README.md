@@ -21,19 +21,48 @@ Each demo is self-contained and runnable with a single `bash demos/<n>-<name>/ru
 
 ---
 
+## Python setup
+
+This project uses Python 3 for data generation and producer scripts. Set up a virtual environment to ensure all dependencies are isolated and repeatable:
+
+```bash
+# Create and activate the virtual environment (one-time)
+bash setup-venv.sh
+source venv/bin/activate
+
+# Verify installation
+python -c "import fastavro, confluent_kafka, boto3; print('✓ All dependencies loaded')"
+```
+
+**Dependencies:**
+- `fastavro` — Avro data serialization (Demos 1, 2, 4, 6)
+- `confluent-kafka` — Kafka producer client (Demos 2, 4, 5, 6, 7, 8)
+- `boto3` / `botocore` — MinIO S3 client (Demo 3)
+
+All demo scripts (`demos/<n>-*/run.sh`) automatically activate the venv if available, so you don't need to manually source it for each run. If you prefer to skip the venv, ensure dependencies are installed globally with `pip install -r requirements.txt`.
+
+---
+
 ## Quick start
 
 ```bash
+# 1. Set up Python virtual environment (one-time)
+bash setup-venv.sh
+source venv/bin/activate
+
+# 2. Configure environment
 cp .env.example .env
 # Edit .env: set TD_HOST, TD_USER, TD_PASSWORD, HOST_IP, KAFKA_CLUSTER_ID
 
+# 3. Build and start containers
 docker build -t td-demo-kafka-connect:latest kafka-connect/
 docker build -t flink-demo:latest flink/
 docker compose up -d
 
+# 4. One-time Teradata setup
 docker compose exec -T tpt bash /tpt/scripts/run_setup.sh
 
-# Then run any demo:
+# 5. Run any demo:
 bash demos/01-avro-blob/run.sh
 bash demos/04-kafka-flink-iceberg/run.sh --bounded
 bash demos/05-flink-td-enrich/run.sh

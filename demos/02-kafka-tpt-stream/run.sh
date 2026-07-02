@@ -35,6 +35,9 @@ cd "$PROJECT_ROOT"
 
 [ -f .env ] && set -a && source .env && set +a
 
+# Activate Python virtual environment if available
+[ -f .venv-activate.sh ] && source .venv-activate.sh
+
 KAFKA_EXTERNAL="localhost:${KAFKA_EXTERNAL_PORT:-29092}"
 TOPIC="${KAFKA_TOPIC:-adsb-positions}"
 

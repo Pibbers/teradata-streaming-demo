@@ -29,6 +29,9 @@ cd "$PROJECT_ROOT"
 
 [ -f .env ] && set -a && source .env && set +a
 
+# Activate Python virtual environment if available
+[ -f .venv-activate.sh ] && source .venv-activate.sh
+
 step() { echo ""; echo "── $* ─────────────────────────────────────"; }
 
 run_bteq() {

@@ -97,7 +97,6 @@ services:
         mc alias set local http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD};
         mc mb --ignore-existing local/iceberg;
         mc mb --ignore-existing local/demo-csv;
-        mc mb --ignore-existing local/demo-avro;
         echo 'MinIO buckets ready.';
       "
     restart: "no"
@@ -124,7 +123,8 @@ services:
 
   # ─── Hive Metastore (Iceberg catalog) ──────────────────────
   hive-metastore:
-    image: docker-hive-metastore:latest
+    build:
+      context: docker/hive-metastore
     hostname: hive-metastore
     networks: [demo-net]
     ports:
@@ -135,10 +135,14 @@ services:
       minio-init:
         condition: service_completed_successfully
     environment:
+      SERVICE_NAME: "metastore"
+      DB_DRIVER: "mysql"
       HIVE_DB_HOSTNAME: "${HIVE_DB_HOSTNAME:-mysql}"
       HIVE_DB_NAME: "${HIVE_DB_NAME:-metastore}"
       HIVE_DB_USER: "${HIVE_DB_USER:-hive}"
       HIVE_DB_PASSWORD: "${HIVE_DB_PASSWORD:-hive}"
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:-minioadmin}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-minioadmin}"
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/localhost/9083' 2>/dev/null || exit 1"]
       interval: 15s

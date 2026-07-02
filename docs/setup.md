@@ -5,7 +5,7 @@
 | Requirement | Notes |
 |-------------|-------|
 | Docker Desktop / Docker Engine 24+ | With Compose v2 (`docker compose`) |
-| Python 3.9+ | `pip install confluent-kafka fastavro boto3` |
+| Python 3.8+ | Virtual environment with `pip install -r requirements.txt` (see Python setup section below) |
 | Teradata instance | Teradata 20.x recommended; `dbc` user with CREATE DATABASE rights |
 | `teradata/tpt:latest` Docker image | Teradata Parallel Transporter container (requires Teradata Developer registration) |
 
@@ -35,11 +35,40 @@ Teradata runs externally — on-premises, VantageCloud, or a VM reachable from t
 
 ---
 
+## Python virtual environment setup
+
+This project uses Python for data generation and Kafka producers (Demos 1–8). Set up a virtual environment to ensure dependencies are isolated and repeatable:
+
+```bash
+# Create and activate the virtual environment (one-time)
+bash setup-venv.sh
+source venv/bin/activate
+```
+
+**What it does:**
+- Creates a Python 3.8+ virtual environment in `venv/`
+- Installs all dependencies: `fastavro`, `confluent-kafka`, `boto3`
+- Upgrades pip, setuptools, and wheel
+
+**Verification:**
+```bash
+python -c "import fastavro, confluent_kafka, boto3; print('✓ All dependencies ready')"
+```
+
+All demo scripts automatically activate the venv if available, so manual activation is only needed for direct script execution. If you prefer to skip the venv, ensure dependencies are installed globally with `pip install -r requirements.txt`.
+
+---
+
 ## Step 1 — Clone and configure
 
 ```bash
 git clone <repo-url>
 cd teradata-streaming-demo
+
+# Set up Python virtual environment
+bash setup-venv.sh
+source venv/bin/activate
+
 cp .env.example .env
 ```
 

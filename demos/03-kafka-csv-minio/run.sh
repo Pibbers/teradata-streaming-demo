@@ -35,6 +35,9 @@ cd "$PROJECT_ROOT"
 
 [ -f .env ] && set -a && source .env && set +a
 
+# Activate Python virtual environment if available
+[ -f .venv-activate.sh ] && source .venv-activate.sh
+
 MINIO_ENDPOINT="http://localhost:${MINIO_API_PORT:-9000}"
 MINIO_USER="${MINIO_ROOT_USER:-minioadmin}"
 MINIO_PASS="${MINIO_ROOT_PASSWORD:-minioadmin}"

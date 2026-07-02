@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<configuration>
+  <!-- MySQL Database Configuration -->
+  <property>
+    <name>javax.jdo.option.ConnectionDriverName</name>
+    <value>com.mysql.cj.jdbc.Driver</value>
+  </property>
+  <property>
+    <name>javax.jdo.option.ConnectionURL</name>
+    <value>jdbc:mysql://${HIVE_DB_HOSTNAME}:3306/${HIVE_DB_NAME}?createDatabaseIfNotExist=true&amp;useSSL=false&amp;allowPublicKeyRetrieval=true&amp;serverTimezone=UTC</value>
+  </property>
+  <property>
+    <name>javax.jdo.option.ConnectionUserName</name>
+    <value>${HIVE_DB_USER}</value>
+  </property>
+  <property>
+    <name>javax.jdo.option.ConnectionPassword</name>
+    <value>${HIVE_DB_PASSWORD}</value>
+  </property>
+
+  <!-- Hive Metastore Configuration -->
+  <property>
+    <name>hive.metastore.warehouse.dir</name>
+    <value>s3a://iceberg/warehouse</value>
+  </property>
+  <property>
+    <name>hive.metastore.thrift.port</name>
+    <value>9083</value>
+  </property>
+  <property>
+    <name>hive.metastore.thrift.bind.host</name>
+    <value>0.0.0.0</value>
+  </property>
+
+  <property>
+    <name>hive.support.concurrency</name>
+    <value>true</value>
+  </property>
+  <property>
+    <name>hive.lock.manager</name>
+    <value>org.apache.hadoop.hive.ql.lockmgr.EmbeddedLockManager</value>
+  </property>
+  <property>
+    <name>hive.metastore.failure.retries</name>
+    <value>3</value>
+  </property>
+  <property>
+    <name>iceberg.hive.lock-timeout-ms</name>
+    <value>180000</value>
+  </property>
+  <property>
+    <name>iceberg.hive.lock-check-min-wait-ms</name>
+    <value>50</value>
+  </property>
+  <property>
+    <name>iceberg.hive.lock-check-max-wait-ms</name>
+    <value>5000</value>
+  </property>
+
+  <!-- S3/MinIO Configuration -->
+  <property>
+    <name>fs.s3a.endpoint</name>
+    <value>http://minio:9000</value>
+  </property>
+  <property>
+    <name>fs.s3a.access.key</name>
+    <value>${MINIO_ROOT_USER}</value>
+  </property>
+  <property>
+    <name>fs.s3a.secret.key</name>
+    <value>${MINIO_ROOT_PASSWORD}</value>
+  </property>
+  <property>
+    <name>fs.s3a.path.style.access</name>
+    <value>true</value>
+  </property>
+  <property>
+    <name>fs.s3a.impl</name>
+    <value>org.apache.hadoop.fs.s3a.S3AFileSystem</value>
+  </property>
+  <!-- Teradata OTF derives namespace locations from STORAGE_LOCATION using s3:// scheme.
+       Hadoop 3.x has no native s3:// filesystem, so alias it to S3AFileSystem.
+       S3AFileSystem always reads credentials from fs.s3a.* keys regardless of scheme. -->
+  <property>
+    <name>fs.s3.impl</name>
+    <value>org.apache.hadoop.fs.s3a.S3AFileSystem</value>
+  </property>
+  <property>
+    <name>fs.s3a.connection.timeout</name>
+    <value>30000</value>
+  </property>
+  <property>
+    <name>fs.s3a.socket.timeout</name>
+    <value>30000</value>
+  </property>
+
+  <!-- Additional Hive Settings -->
+  <property>
+    <name>hive.server2.webui.port</name>
+    <value>10002</value>
+  </property>
+  <property>
+    <name>hive.metastore.schema.verification</name>
+    <value>false</value>
+  </property>
+</configuration>

@@ -1,0 +1,13 @@
+# Python dependencies for Teradata Streaming Demo
+# Install with: pip install -r requirements.txt
+# Or use the setup script: bash setup-venv.sh
+
+# Avro serialization for product and ADS-B demos
+fastavro==1.8.4
+
+# Kafka producer client
+confluent-kafka==2.3.0
+
+# AWS S3 / MinIO client
+boto3==1.26.165
+botocore==1.29.165

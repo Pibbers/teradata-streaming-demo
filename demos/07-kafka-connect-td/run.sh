@@ -40,6 +40,9 @@ cd "$PROJECT_ROOT"
 
 [ -f .env ] && set -a && source .env && set +a
 
+# Activate Python virtual environment if available
+[ -f .venv-activate.sh ] && source .venv-activate.sh
+
 KAFKA_EXTERNAL="localhost:${KAFKA_EXTERNAL_PORT:-29092}"
 CONNECT_URL="http://localhost:${KAFKA_CONNECT_PORT:-8083}"
 CONNECTOR_NAME="demo07-td-jdbc-sink"
